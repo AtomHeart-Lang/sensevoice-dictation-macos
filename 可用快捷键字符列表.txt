@@ -1,0 +1,85 @@
+SenseVoice 菜单栏应用 - 手动快捷键可用字符列表
+版本参考: Build 2026-03-02-b8
+文件来源: menubar_dictation_app.py 中的 normalize_keyboard_hotkey / KEYCODE_TOKEN_MAP / MOD_ORDER
+补充来源: menubar_dictation_app.py 中的 normalize_mouse_button / TriggerController.BUTTON_MAP
+
+一、组合格式
+1) 格式: 修饰键+主键
+2) 示例: <ctrl>+a
+3) 多修饰键示例: <ctrl>+<alt>+<f8>
+4) 主键如果是功能键或特殊键，建议用尖括号写法。
+
+二、可用修饰键
+- <ctrl>
+- <alt>
+- <cmd>
+- <shift>
+
+说明:
+- <option> 会在内部转换为 <alt>
+- 单独输入 option 也会转换为 <alt>
+
+三、可用主键（手动输入）
+A. 字母
+- a b c d e f g h i j k l m n o p q r s t u v w x y z
+
+B. 数字
+- 0 1 2 3 4 5 6 7 8 9
+
+C. 符号
+- = - [ ] ; ' \\ , . / `
+
+D. 特殊键
+- <space>
+- <enter>
+- <tab>
+- <backspace>
+- <delete>
+- <esc>
+- <left> <right> <up> <down>
+- <home> <end> <pgup> <pgdn>
+
+E. 功能键
+- <f1> <f2> <f3> <f4> <f5> <f6> <f7> <f8> <f9>
+- <f10> <f11> <f12> <f13> <f14> <f15> <f16> <f17> <f18> <f19>
+
+四、推荐输入示例
+- <ctrl>+a
+- <ctrl>+<alt>+<space>
+- <cmd>+<shift>+<f8>
+- <alt>+/
+- <ctrl>+<left>
+- <ctrl>+<home>
+- <ctrl>+<pgdn>
+
+五、常见无效写法示例
+- <ctrl>+left      (建议写成 <ctrl>+<left>)
+- <ctrl>+<⬅️>      (emoji 不是有效键名)
+- <ctrl>+<pageup>  (请使用 <pgup>)
+- <ctrl>+<pagedown> (请使用 <pgdn>)
+
+六、鼠标触发（手动输入）
+A. 推荐写法
+- left
+- right
+- middle
+- x1
+- x2
+
+B. 等价写法（会自动规范化）
+- button0 -> left
+- button1 -> right
+- button2 -> middle
+- button3 -> x1
+- button4 -> x2
+- primary -> left
+- secondary -> right
+
+C. 扩展写法
+- button5 到 button24（用于高编号侧键/扩展键设备）
+
+D. 示例
+- x1
+- left
+- button4
+- button8

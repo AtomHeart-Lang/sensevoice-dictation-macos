@@ -1,0 +1,19 @@
+# Global hotkey format follows pynput format.
+# Common examples:
+#   <ctrl>+<alt>+<space>
+#   <cmd>+<shift>+v
+#   <ctrl>+<option>+r
+hotkey = "<ctrl>+<alt>+<space>"
+
+# SenseVoice language: auto, zh, en, yue, ja, ko, nospeech
+language = "auto"
+
+# Audio configuration
+sample_rate = 16000
+channels = 1
+
+# Paste behavior (actual runtime clamps this into 15~60ms)
+paste_delay_ms = 40
+
+# Enable system sound when start/stop recording
+enable_beep = true

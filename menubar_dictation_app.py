@@ -1,0 +1,1392 @@
+#!/usr/bin/env python3
+import atexit
+import fcntl
+import json
+import logging
+import os
+import shutil
+import subprocess
+import threading
+import time
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Callable, List, Optional
+
+import numpy as np
+import pyperclip
+import Quartz
+import rumps
+import sounddevice as sd
+from AppKit import NSApplication, NSApplicationActivationPolicyAccessory, NSImage
+from Foundation import NSBundle
+from funasr import AutoModel
+from funasr.utils.postprocess_utils import rich_transcription_postprocess
+from pynput import keyboard
+
+try:
+    import tomllib
+except ModuleNotFoundError as exc:
+    raise RuntimeError("Python 3.11+ is required") from exc
+
+
+APP_DIR = Path(__file__).resolve().parent
+CONFIG_PATH = APP_DIR / "config.toml"
+UI_SETTINGS_PATH = APP_DIR / "ui_settings.json"
+LOG_PATH = APP_DIR / "menubar_debug.log"
+LOCK_PATH = APP_DIR / "menubar_app.lock"
+MODEL_NAME = "iic/SenseVoiceSmall"
+APP_ICON = str((APP_DIR / "assets" / "mic_menu_icon.png").resolve())
+APP_BUILD = "2026-03-02-b9"
+LOCK_FD = None
+MODEL_CACHE_DIRS = [
+    Path.home() / ".cache/modelscope/hub/models/iic/SenseVoiceSmall",
+    Path.home() / ".cache/modelscope/hub/models/iic/speech_fsmn_vad_zh-cn-16k-common-pytorch",
+]
+
+logging.basicConfig(
+    filename=str(LOG_PATH),
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    force=True,
+)
+logging.info("menubar app module loaded")
+
+
+def _applescript_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def ui_alert(message: str, title: str = "SenseVoice Dictation") -> None:
+    icon_clause = ""
+    if Path(APP_ICON).exists():
+        icon_clause = f' with icon POSIX file "{_applescript_escape(APP_ICON)}"'
+    script = (
+        f'display dialog "{_applescript_escape(message)}" '
+        f'with title "{_applescript_escape(title)}" '
+        f'buttons {{"OK"}} default button "OK"{icon_clause}'
+    )
+    subprocess.run(
+        ["osascript", "-e", script],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+
+
+def ui_prompt_text(
+    message: str,
+    title: str,
+    default_text: str = "",
+    ok_text: str = "保存",
+    cancel_text: str = "取消",
+) -> Optional[str]:
+    icon_clause = ""
+    if Path(APP_ICON).exists():
+        icon_clause = f' with icon POSIX file "{_applescript_escape(APP_ICON)}"'
+    script = (
+        f'display dialog "{_applescript_escape(message)}" '
+        f'with title "{_applescript_escape(title)}" '
+        f'default answer "{_applescript_escape(default_text)}" '
+        f'buttons {{"{_applescript_escape(cancel_text)}","{_applescript_escape(ok_text)}"}} '
+        f'default button "{_applescript_escape(ok_text)}" '
+        f'cancel button "{_applescript_escape(cancel_text)}"{icon_clause}\n'
+        "text returned of result"
+    )
+    proc = subprocess.run(
+        ["osascript", "-e", script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.strip()
+
+
+@dataclass
+class CoreConfig:
+    language: str = "auto"
+    sample_rate: int = 16000
+    channels: int = 1
+    paste_delay_ms: int = 40
+    enable_beep: bool = True
+
+
+@dataclass
+class UISettings:
+    schema_version: int = 2
+    trigger_mode: str = "keyboard"  # keyboard|mouse
+    keyboard_hotkey: str = "<ctrl>+<alt>+<space>"
+    mouse_button: str = "x1"  # left|right|middle|x1|x2
+    enable_dictation_on_app_start: bool = True
+
+
+def load_core_config() -> CoreConfig:
+    if not CONFIG_PATH.exists():
+        return CoreConfig()
+    with open(CONFIG_PATH, "rb") as f:
+        data = tomllib.load(f)
+    return CoreConfig(
+        language=str(data.get("language", "auto")),
+        sample_rate=int(data.get("sample_rate", 16000)),
+        channels=int(data.get("channels", 1)),
+        paste_delay_ms=int(data.get("paste_delay_ms", 40)),
+        enable_beep=bool(data.get("enable_beep", True)),
+    )
+
+
+def load_ui_settings() -> UISettings:
+    if not UI_SETTINGS_PATH.exists():
+        settings = UISettings()
+        save_ui_settings(settings)
+        return settings
+    with open(UI_SETTINGS_PATH, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    is_legacy = "schema_version" not in data
+    settings = UISettings(
+        schema_version=int(data.get("schema_version", 2)),
+        trigger_mode=str(data.get("trigger_mode", "keyboard")),
+        keyboard_hotkey=str(data.get("keyboard_hotkey", "<ctrl>+<alt>+<space>")),
+        mouse_button=str(data.get("mouse_button", "x1")),
+        enable_dictation_on_app_start=bool(
+            data.get("enable_dictation_on_app_start", True if is_legacy else True)
+        ),
+    )
+    if is_legacy:
+        settings.enable_dictation_on_app_start = True
+        save_ui_settings(settings)
+    return settings
+
+
+def save_ui_settings(settings: UISettings) -> None:
+    with open(UI_SETTINGS_PATH, "w", encoding="utf-8") as f:
+        json.dump(asdict(settings), f, indent=2, ensure_ascii=False)
+
+
+def normalize_keyboard_hotkey(value: str) -> str:
+    raw = value.strip().lower().replace(" ", "")
+    raw = raw.replace("<option>", "<alt>")
+    raw = raw.replace("option", "alt") if raw == "option" else raw
+    if not raw:
+        return "<ctrl>+<alt>+<space>"
+    if "+" in raw or "<" in raw:
+        return raw
+    # single key support, e.g. "f8" or "r"
+    return f"<{raw}>" if len(raw) > 1 else raw
+
+
+MOD_ORDER = ["<ctrl>", "<alt>", "<cmd>", "<shift>"]
+KEYCODE_TOKEN_MAP = {
+    0: "a",
+    1: "s",
+    2: "d",
+    3: "f",
+    4: "h",
+    5: "g",
+    6: "z",
+    7: "x",
+    8: "c",
+    9: "v",
+    11: "b",
+    12: "q",
+    13: "w",
+    14: "e",
+    15: "r",
+    16: "y",
+    17: "t",
+    18: "1",
+    19: "2",
+    20: "3",
+    21: "4",
+    22: "6",
+    23: "5",
+    24: "=",
+    25: "9",
+    26: "7",
+    27: "-",
+    28: "8",
+    29: "0",
+    30: "]",
+    31: "o",
+    32: "u",
+    33: "[",
+    34: "i",
+    35: "p",
+    37: "l",
+    38: "j",
+    39: "'",
+    40: "k",
+    41: ";",
+    42: "\\",
+    43: ",",
+    44: "/",
+    45: "n",
+    46: "m",
+    47: ".",
+    49: "<space>",
+    50: "`",
+    36: "<enter>",
+    48: "<tab>",
+    51: "<backspace>",
+    53: "<esc>",
+    117: "<delete>",
+    115: "<home>",
+    119: "<end>",
+    116: "<pgup>",
+    121: "<pgdn>",
+    123: "<left>",
+    124: "<right>",
+    125: "<down>",
+    126: "<up>",
+    122: "<f1>",
+    120: "<f2>",
+    99: "<f3>",
+    118: "<f4>",
+    96: "<f5>",
+    97: "<f6>",
+    98: "<f7>",
+    100: "<f8>",
+    101: "<f9>",
+    109: "<f10>",
+    103: "<f11>",
+    111: "<f12>",
+    105: "<f13>",
+    107: "<f14>",
+    113: "<f15>",
+    106: "<f16>",
+    64: "<f17>",
+    79: "<f18>",
+    80: "<f19>",
+}
+MOD_KEY_MAP = {
+    keyboard.Key.ctrl: "<ctrl>",
+    keyboard.Key.ctrl_l: "<ctrl>",
+    keyboard.Key.ctrl_r: "<ctrl>",
+    keyboard.Key.alt: "<alt>",
+    keyboard.Key.alt_l: "<alt>",
+    keyboard.Key.alt_r: "<alt>",
+    keyboard.Key.cmd: "<cmd>",
+    keyboard.Key.cmd_l: "<cmd>",
+    keyboard.Key.cmd_r: "<cmd>",
+    keyboard.Key.shift: "<shift>",
+    keyboard.Key.shift_l: "<shift>",
+    keyboard.Key.shift_r: "<shift>",
+}
+SPECIAL_KEY_MAP = {
+    keyboard.Key.space: "<space>",
+    keyboard.Key.enter: "<enter>",
+    keyboard.Key.tab: "<tab>",
+    keyboard.Key.esc: "<esc>",
+    keyboard.Key.backspace: "<backspace>",
+    keyboard.Key.delete: "<delete>",
+}
+
+
+def key_to_token(key) -> Optional[str]:
+    if key in MOD_KEY_MAP:
+        return MOD_KEY_MAP[key]
+    if key in SPECIAL_KEY_MAP:
+        return SPECIAL_KEY_MAP[key]
+
+    if isinstance(key, keyboard.KeyCode) and key.char:
+        return key.char.lower()
+
+    name = getattr(key, "name", None)
+    if name:
+        name = name.lower()
+        if name.startswith("f") and name[1:].isdigit():
+            return f"<{name}>"
+    return None
+
+
+def mods_from_flags(flags: int) -> List[str]:
+    mods: List[str] = []
+    if flags & Quartz.kCGEventFlagMaskControl:
+        mods.append("<ctrl>")
+    if flags & Quartz.kCGEventFlagMaskAlternate:
+        mods.append("<alt>")
+    if flags & Quartz.kCGEventFlagMaskCommand:
+        mods.append("<cmd>")
+    if flags & Quartz.kCGEventFlagMaskShift:
+        mods.append("<shift>")
+    return mods
+
+
+def ensure_listen_permission() -> bool:
+    ok = bool(Quartz.CGPreflightListenEventAccess())
+    if ok:
+        return True
+
+    # Try to trigger system prompt once.
+    try:
+        Quartz.CGRequestListenEventAccess()
+    except Exception:
+        pass
+
+    ok = bool(Quartz.CGPreflightListenEventAccess())
+    if not ok:
+        logging.warning("listen permission missing: Input Monitoring/Accessibility not granted")
+    return ok
+
+
+def button_number_to_name(button_number: int) -> str:
+    mapping = {
+        0: "left",
+        1: "right",
+        2: "middle",
+        3: "x1",
+        4: "x2",
+    }
+    return mapping.get(button_number, f"button{button_number}")
+
+
+def capture_keyboard_hotkey(timeout_s: float = 8.0):
+    logging.info("capture_keyboard_hotkey: start")
+    result = {"value": None, "err": None}
+    event_mask = 1 << Quartz.kCGEventKeyDown
+    runloop_ref = {"loop": None}
+    tap_ref = {"tap": None}
+
+    def handler(proxy, event_type, event, refcon):
+        if event_type == Quartz.kCGEventTapDisabledByTimeout and tap_ref["tap"] is not None:
+            Quartz.CGEventTapEnable(tap_ref["tap"], True)
+            return event
+
+        keycode = int(Quartz.CGEventGetIntegerValueField(event, Quartz.kCGKeyboardEventKeycode))
+        token = KEYCODE_TOKEN_MAP.get(keycode)
+        if token is None:
+            return event
+        if token == "<esc>":
+            if runloop_ref["loop"] is not None:
+                Quartz.CFRunLoopStop(runloop_ref["loop"])
+            return event
+
+        flags = int(Quartz.CGEventGetFlags(event))
+        mods = mods_from_flags(flags)
+        hotkey = "+".join(mods + [token]) if mods else token
+        try:
+            keyboard.HotKey.parse(hotkey)
+        except Exception:
+            return event
+        result["value"] = hotkey
+        if runloop_ref["loop"] is not None:
+            Quartz.CFRunLoopStop(runloop_ref["loop"])
+        return event
+
+    try:
+        tap_ref["tap"] = Quartz.CGEventTapCreate(
+            Quartz.kCGHIDEventTap,
+            Quartz.kCGHeadInsertEventTap,
+            Quartz.kCGEventTapOptionDefault,
+            event_mask,
+            handler,
+            None,
+        )
+        if tap_ref["tap"] is None:
+            result["err"] = "Keyboard event tap creation failed."
+        else:
+            source = Quartz.CFMachPortCreateRunLoopSource(None, tap_ref["tap"], 0)
+            runloop_ref["loop"] = Quartz.CFRunLoopGetCurrent()
+            Quartz.CFRunLoopAddSource(runloop_ref["loop"], source, Quartz.kCFRunLoopCommonModes)
+            Quartz.CGEventTapEnable(tap_ref["tap"], True)
+            start = time.time()
+            while result["value"] is None and (time.time() - start) < timeout_s:
+                Quartz.CFRunLoopRunInMode(Quartz.kCFRunLoopDefaultMode, 0.1, False)
+    except Exception as exc:
+        result["err"] = f"Keyboard capture crashed: {exc}"
+    finally:
+        try:
+            if runloop_ref["loop"] is not None:
+                Quartz.CFRunLoopStop(runloop_ref["loop"])
+        except Exception:
+            pass
+    if result["value"]:
+        logging.info("capture_keyboard_hotkey: captured=%s", result["value"])
+    elif result["err"]:
+        logging.warning("capture_keyboard_hotkey: error=%s", result["err"])
+    else:
+        logging.info("capture_keyboard_hotkey: timeout")
+    return result["value"], result["err"]
+
+
+def prompt_hotkey_text_fallback(current_value: str) -> Optional[str]:
+    text = ui_prompt_text(
+        message="手动输入快捷键（例如 <ctrl>+<alt>+<space> 或 f8）",
+        title="Set Keyboard Hotkey (Manual)",
+        default_text=current_value,
+        ok_text="保存",
+        cancel_text="取消",
+    )
+    if text is None:
+        return None
+    value = normalize_keyboard_hotkey(text)
+    if not is_hotkey_supported(value):
+        ui_alert("快捷键格式无效或当前版本不支持该按键。")
+        return None
+    return value
+
+
+def is_hotkey_supported(hotkey: str) -> bool:
+    parts = [p.strip().lower() for p in hotkey.split("+") if p.strip()]
+    if not parts:
+        return False
+    key_token = parts[-1]
+    mods = set(parts[:-1])
+    allowed_mods = {"<ctrl>", "<alt>", "<cmd>", "<shift>"}
+    if not mods.issubset(allowed_mods):
+        return False
+    return key_token in KEYCODE_TOKEN_MAP.values()
+
+
+def normalize_mouse_button(value: str) -> Optional[str]:
+    raw = value.strip().lower().replace(" ", "")
+    alias_map = {
+        "primary": "left",
+        "secondary": "right",
+        "leftclick": "left",
+        "rightclick": "right",
+        "middleclick": "middle",
+        "wheelclick": "middle",
+        "xbutton1": "x1",
+        "xbutton2": "x2",
+    }
+    raw = alias_map.get(raw, raw)
+
+    direct = {"left", "right", "middle", "x1", "x2"}
+    if raw in direct:
+        return raw
+
+    if raw.startswith("button") and raw[6:].isdigit():
+        idx = int(raw[6:])
+        if idx == 0:
+            return "left"
+        if idx == 1:
+            return "right"
+        if idx == 2:
+            return "middle"
+        if idx == 3:
+            return "x1"
+        if idx == 4:
+            return "x2"
+        if 0 <= idx <= 24:
+            return f"button{idx}"
+    return None
+
+
+def prompt_mouse_text_fallback(current_value: str) -> Optional[str]:
+    text = ui_prompt_text(
+        message="手动输入鼠标触发键（例如 x1、left、button4）。",
+        title="Set Mouse Button (Manual)",
+        default_text=current_value,
+        ok_text="保存",
+        cancel_text="取消",
+    )
+    if text is None:
+        return None
+    return normalize_mouse_button(text)
+
+
+def acquire_single_instance() -> bool:
+    global LOCK_FD
+    lock_file = open(LOCK_PATH, "w")
+    try:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        lock_file.close()
+        return False
+    lock_file.seek(0)
+    lock_file.truncate()
+    lock_file.write(str(os.getpid()))
+    lock_file.flush()
+    LOCK_FD = lock_file
+    return True
+
+
+def release_single_instance() -> None:
+    global LOCK_FD
+    if LOCK_FD is None:
+        return
+    try:
+        fcntl.flock(LOCK_FD.fileno(), fcntl.LOCK_UN)
+    except Exception:
+        pass
+    try:
+        LOCK_FD.close()
+    except Exception:
+        pass
+    LOCK_FD = None
+
+
+def capture_mouse_button(timeout_s: float = 8.0):
+    logging.info("capture_mouse_button: start")
+    result = {"value": None, "err": None}
+    done = threading.Event()
+
+    def loop():
+        event_mask = (
+            (1 << Quartz.kCGEventLeftMouseDown)
+            | (1 << Quartz.kCGEventRightMouseDown)
+            | (1 << Quartz.kCGEventOtherMouseDown)
+        )
+        runloop_ref = {"loop": None}
+
+        def handler(proxy, event_type, event, refcon):
+            if event_type == Quartz.kCGEventTapDisabledByTimeout and tap_ref["tap"] is not None:
+                Quartz.CGEventTapEnable(tap_ref["tap"], True)
+                return event
+            button_no = int(
+                Quartz.CGEventGetIntegerValueField(event, Quartz.kCGMouseEventButtonNumber)
+            )
+            result["value"] = button_number_to_name(button_no)
+            done.set()
+            if runloop_ref["loop"] is not None:
+                Quartz.CFRunLoopStop(runloop_ref["loop"])
+            return event
+
+        tap_ref = {"tap": None}
+        tap_ref["tap"] = Quartz.CGEventTapCreate(
+            Quartz.kCGHIDEventTap,
+            Quartz.kCGHeadInsertEventTap,
+            Quartz.kCGEventTapOptionDefault,
+            event_mask,
+            handler,
+            None,
+        )
+        if tap_ref["tap"] is None:
+            result["err"] = "Mouse event tap creation failed. Check Accessibility + Input Monitoring."
+            done.set()
+            return
+
+        source = Quartz.CFMachPortCreateRunLoopSource(None, tap_ref["tap"], 0)
+        runloop_ref["loop"] = Quartz.CFRunLoopGetCurrent()
+        Quartz.CFRunLoopAddSource(runloop_ref["loop"], source, Quartz.kCFRunLoopCommonModes)
+        Quartz.CGEventTapEnable(tap_ref["tap"], True)
+
+        start = time.time()
+        while not done.is_set() and (time.time() - start) < timeout_s:
+            Quartz.CFRunLoopRunInMode(Quartz.kCFRunLoopDefaultMode, 0.1, False)
+
+        if runloop_ref["loop"] is not None:
+            Quartz.CFRunLoopStop(runloop_ref["loop"])
+
+    t = threading.Thread(target=loop, daemon=True)
+    t.start()
+    done.wait(timeout=timeout_s + 0.5)
+    if result["value"]:
+        logging.info("capture_mouse_button: captured=%s", result["value"])
+    elif result["err"]:
+        logging.warning("capture_mouse_button: error=%s", result["err"])
+    else:
+        logging.info("capture_mouse_button: timeout")
+    return result["value"], result["err"]
+
+
+class DictationEngine:
+    def __init__(self, config: CoreConfig, status_cb: Callable[[str], None]):
+        self.config = config
+        self.status_cb = status_cb
+        self.model = None
+        self.model_loading = False
+        self.stream = None
+        self.frames: List[np.ndarray] = []
+        self.lock = threading.Lock()
+        self.recording = False
+        self.processing = False
+        self.shutdown_flag = False
+
+    def _set_status(self, status: str) -> None:
+        self.status_cb(status)
+
+    def _beep(self, kind: str = "default") -> None:
+        if not self.config.enable_beep:
+            return
+        sound_file = "/System/Library/Sounds/Pop.aiff"
+        if kind == "start":
+            sound_file = "/System/Library/Sounds/Tink.aiff"
+        elif kind == "stop":
+            sound_file = "/System/Library/Sounds/Pop.aiff"
+        subprocess.Popen(
+            ["afplay", sound_file],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    def warmup_async(self) -> None:
+        with self.lock:
+            if self.model is not None or self.model_loading:
+                return
+            self.model_loading = True
+        threading.Thread(target=self._load_model_worker, daemon=True).start()
+
+    def _load_model_worker(self) -> None:
+        self._set_status("LOADING")
+        try:
+            model = AutoModel(
+                model=MODEL_NAME,
+                trust_remote_code=False,
+                vad_model="fsmn-vad",
+                vad_kwargs={"max_single_segment_time": 30000},
+                device="cpu",
+                disable_update=True,
+            )
+            with self.lock:
+                self.model = model
+        except Exception:
+            self._set_status("ERROR")
+        finally:
+            with self.lock:
+                self.model_loading = False
+            if not self.shutdown_flag and self.model is not None and not self.recording and not self.processing:
+                self._set_status("READY")
+
+    def _ensure_model(self) -> bool:
+        with self.lock:
+            if self.model is not None:
+                return True
+            if self.model_loading:
+                return False
+        self.warmup_async()
+        return False
+
+    def _audio_callback(self, indata, frames, time_info, status):
+        if status:
+            pass
+        with self.lock:
+            if self.recording and not self.shutdown_flag:
+                self.frames.append(indata.copy())
+
+    def _merge_frames(self):
+        with self.lock:
+            if not self.frames:
+                return None
+            return np.concatenate(self.frames, axis=0)
+
+    @staticmethod
+    def _trim_silence(audio: np.ndarray, sample_rate: int) -> np.ndarray:
+        if audio is None or audio.size == 0:
+            return audio
+        arr = np.squeeze(audio).astype(np.float32)
+        if arr.ndim != 1 or arr.size < max(sample_rate // 5, 1):
+            return arr
+        abs_arr = np.abs(arr)
+        active = np.flatnonzero(abs_arr > 0.008)
+        if active.size == 0:
+            return arr
+        pad = max(int(sample_rate * 0.08), 1)
+        start = max(int(active[0]) - pad, 0)
+        end = min(int(active[-1]) + pad + 1, arr.size)
+        if start == 0 and end == arr.size:
+            return arr
+        trimmed = arr[start:end]
+        logging.info("trim_silence: raw=%d trimmed=%d", arr.size, trimmed.size)
+        return trimmed
+
+    def _paste_text(self, text: str) -> None:
+        pyperclip.copy(text)
+        # Cap delay so stale configs do not add visible latency.
+        delay_ms = min(max(self.config.paste_delay_ms, 15), 60)
+        time.sleep(delay_ms / 1000)
+        subprocess.run(
+            ["osascript", "-e", 'tell application "System Events" to keystroke "v" using command down'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+
+    def start_recording(self) -> None:
+        if not self._ensure_model():
+            return
+
+        with self.lock:
+            if self.recording or self.processing or self.shutdown_flag:
+                return
+            self.frames = []
+            self.recording = True
+        # Update UI state immediately, don't wait for stream startup.
+        self._set_status("RECORDING")
+
+        try:
+            self.stream = sd.InputStream(
+                samplerate=self.config.sample_rate,
+                channels=self.config.channels,
+                dtype="float32",
+                callback=self._audio_callback,
+            )
+            self.stream.start()
+        except Exception:
+            with self.lock:
+                self.recording = False
+            self._set_status("ERROR")
+            return
+
+        self._beep("start")
+
+    def stop_recording(self) -> None:
+        with self.lock:
+            if not self.recording:
+                return
+            self.recording = False
+        stop_ts = time.monotonic()
+        logging.info("stop_recording: requested")
+
+        # Reflect stop action immediately, before any potentially blocking audio teardown.
+        self._set_status("TRANSCRIBING")
+
+        if self.stream is not None:
+            self.stream.stop()
+            self.stream.close()
+            self.stream = None
+
+        audio = self._merge_frames()
+        if audio is None or len(audio) == 0:
+            self._set_status("READY")
+            return
+
+        threading.Thread(
+            target=self._transcribe_worker,
+            args=(audio, stop_ts),
+            daemon=True,
+        ).start()
+        self._beep("stop")
+
+    def _transcribe_worker(self, audio: np.ndarray, stop_ts: Optional[float] = None) -> None:
+        with self.lock:
+            if self.processing or self.shutdown_flag:
+                return
+            self.processing = True
+
+        self._set_status("TRANSCRIBING")
+        transcribe_start = time.monotonic()
+        try:
+            pcm = self._trim_silence(audio, self.config.sample_rate)
+            result = self.model.generate(
+                input=pcm,
+                cache={},
+                language=self.config.language,
+                use_itn=False,
+                batch_size_s=10,
+                merge_vad=False,
+                fs=self.config.sample_rate,
+            )
+            raw_text = result[0].get("text", "") if result else ""
+            text = rich_transcription_postprocess(raw_text).strip()
+            if text and not self.shutdown_flag:
+                self._paste_text(text)
+            done_ts = time.monotonic()
+            if stop_ts is not None:
+                logging.info(
+                    "latency stop_to_done=%.3fs transcribe=%.3fs text_len=%d",
+                    done_ts - stop_ts,
+                    done_ts - transcribe_start,
+                    len(text),
+                )
+        except Exception:
+            self._set_status("ERROR")
+        finally:
+            with self.lock:
+                self.processing = False
+            if not self.shutdown_flag and not self.recording:
+                self._set_status("READY")
+
+    def toggle_recording(self) -> None:
+        with self.lock:
+            recording_now = self.recording
+        if recording_now:
+            self.stop_recording()
+        else:
+            self.start_recording()
+
+    def stop_all(self) -> None:
+        with self.lock:
+            self.recording = False
+            self.shutdown_flag = True
+
+        if self.stream is not None:
+            try:
+                self.stream.stop()
+                self.stream.close()
+            except Exception:
+                pass
+            self.stream = None
+
+        with self.lock:
+            self.frames = []
+            self.model = None
+            self.processing = False
+            self.model_loading = False
+
+
+class TriggerController:
+    BUTTON_MAP = {
+        "left": 0,
+        "right": 1,
+        "middle": 2,
+        "x1": 3,
+        "x2": 4,
+        "button3": 3,
+        "button4": 4,
+    }
+
+    def __init__(self, callback: Callable[[], None]):
+        self.callback = callback
+        self.keyboard_thread = None
+        self.keyboard_runloop = None
+        self.keyboard_tap = None
+        self.keyboard_stop_event = threading.Event()
+        self.required_mods = set()
+        self.required_keycode = None
+        self.mouse_thread = None
+        self.mouse_runloop = None
+        self.mouse_tap = None
+        self.mouse_stop_event = threading.Event()
+        self._lock = threading.Lock()
+        self.last_trigger_ts = 0.0
+        self.active_mods = set()
+        self.pressed_keycodes = set()
+        self.combo_armed = False
+
+    def stop(self) -> None:
+        with self._lock:
+            self.keyboard_stop_event.set()
+            if self.keyboard_runloop is not None:
+                Quartz.CFRunLoopStop(self.keyboard_runloop)
+            if self.keyboard_thread is not None:
+                self.keyboard_thread.join(timeout=1.0)
+            self.keyboard_thread = None
+            self.keyboard_runloop = None
+            self.keyboard_tap = None
+            self.required_mods = set()
+            self.required_keycode = None
+            self.active_mods = set()
+            self.pressed_keycodes = set()
+            self.combo_armed = False
+            self.mouse_stop_event.set()
+            if self.mouse_runloop is not None:
+                Quartz.CFRunLoopStop(self.mouse_runloop)
+            if self.mouse_thread is not None:
+                self.mouse_thread.join(timeout=1.0)
+            self.mouse_thread = None
+            self.mouse_runloop = None
+            self.mouse_tap = None
+
+    def start_keyboard(self, hotkey_value: str) -> None:
+        self.stop()
+        hotkey = normalize_keyboard_hotkey(hotkey_value)
+        if not is_hotkey_supported(hotkey):
+            raise RuntimeError(f"Unsupported keyboard hotkey: {hotkey}")
+        parts = [p for p in hotkey.split("+") if p]
+        if not parts:
+            raise RuntimeError("Invalid keyboard hotkey")
+        key_token = parts[-1].lower()
+        mods = {p.lower() for p in parts[:-1]}
+
+        required_keycode = None
+        for k, v in KEYCODE_TOKEN_MAP.items():
+            if v == key_token:
+                required_keycode = k
+                break
+        if required_keycode is None:
+            raise RuntimeError(f"Unsupported key token: {key_token}")
+
+        self.required_keycode = required_keycode
+        self.required_mods = mods
+        self.active_mods = set()
+        self.pressed_keycodes = set()
+        self.combo_armed = False
+        self.keyboard_stop_event.clear()
+        started = threading.Event()
+        startup_error = {"err": None}
+
+        def loop():
+            try:
+                event_mask = (
+                    (1 << Quartz.kCGEventKeyDown)
+                    | (1 << Quartz.kCGEventKeyUp)
+                    | (1 << Quartz.kCGEventFlagsChanged)
+                )
+
+                def handler(proxy, event_type, event, refcon):
+                    if self.keyboard_stop_event.is_set():
+                        return event
+                    if event_type in (
+                        Quartz.kCGEventTapDisabledByTimeout,
+                        getattr(Quartz, "kCGEventTapDisabledByUserInput", -1),
+                    ):
+                        Quartz.CGEventTapEnable(self.keyboard_tap, True)
+                        return event
+
+                    keycode = int(
+                        Quartz.CGEventGetIntegerValueField(event, Quartz.kCGKeyboardEventKeycode)
+                    )
+                    flags = int(Quartz.CGEventGetFlags(event))
+                    self.active_mods = set(mods_from_flags(flags))
+
+                    if event_type == Quartz.kCGEventKeyDown:
+                        is_repeat = int(
+                            Quartz.CGEventGetIntegerValueField(
+                                event, Quartz.kCGKeyboardEventAutorepeat
+                            )
+                        )
+                        if is_repeat:
+                            return event
+                        self.pressed_keycodes.add(keycode)
+                    elif event_type == Quartz.kCGEventKeyUp:
+                        self.pressed_keycodes.discard(keycode)
+                    # For flags-changed, no direct key add/remove here; we only refresh modifiers.
+
+                    combo_now = (
+                        self.required_keycode in self.pressed_keycodes
+                        and self.required_mods.issubset(self.active_mods)
+                    )
+                    if combo_now and not self.combo_armed:
+                        self.combo_armed = True
+                        logging.info(
+                            "keyboard combo matched keycode=%s required_mods=%s active_mods=%s pressed=%s",
+                            self.required_keycode,
+                            sorted(self.required_mods),
+                            sorted(self.active_mods),
+                            sorted(self.pressed_keycodes),
+                        )
+                        self._fire_callback()
+                    elif not combo_now:
+                        self.combo_armed = False
+                    return event
+
+                self.keyboard_tap = Quartz.CGEventTapCreate(
+                    Quartz.kCGHIDEventTap,
+                    Quartz.kCGHeadInsertEventTap,
+                    Quartz.kCGEventTapOptionDefault,
+                    event_mask,
+                    handler,
+                    None,
+                )
+                if self.keyboard_tap is None:
+                    startup_error["err"] = RuntimeError("Failed to create keyboard event tap")
+                    started.set()
+                    return
+
+                source = Quartz.CFMachPortCreateRunLoopSource(None, self.keyboard_tap, 0)
+                self.keyboard_runloop = Quartz.CFRunLoopGetCurrent()
+                Quartz.CFRunLoopAddSource(self.keyboard_runloop, source, Quartz.kCFRunLoopCommonModes)
+                Quartz.CGEventTapEnable(self.keyboard_tap, True)
+                started.set()
+                Quartz.CFRunLoopRun()
+            except Exception as exc:
+                startup_error["err"] = exc
+                started.set()
+
+        self.keyboard_thread = threading.Thread(target=loop, daemon=True)
+        self.keyboard_thread.start()
+        started.wait(timeout=1.5)
+        if startup_error["err"] is not None:
+            raise startup_error["err"]
+
+    def _fire_callback(self):
+        now = time.monotonic()
+        # Debounce hotkey repeat so one physical press maps to one toggle.
+        if now - self.last_trigger_ts < 0.12:
+            return
+        self.last_trigger_ts = now
+        logging.info("trigger fired")
+        # Never block event tap callback thread with recording/transcribe control flow.
+        threading.Thread(target=self.callback, daemon=True).start()
+
+    def start_mouse(self, button_name: str) -> None:
+        self.stop()
+        normalized = normalize_mouse_button(button_name)
+        if normalized is None:
+            raise RuntimeError(f"Unsupported mouse button: {button_name}")
+        if normalized.startswith("button") and normalized[6:].isdigit():
+            target_button_number = int(normalized[6:])
+        else:
+            target_button_number = self.BUTTON_MAP[normalized]
+        self.mouse_stop_event.clear()
+        started = threading.Event()
+        startup_error = {"err": None}
+
+        def loop():
+            try:
+                event_mask = (
+                    (1 << Quartz.kCGEventLeftMouseDown)
+                    | (1 << Quartz.kCGEventRightMouseDown)
+                    | (1 << Quartz.kCGEventOtherMouseDown)
+                )
+
+                def handler(proxy, event_type, event, refcon):
+                    if self.mouse_stop_event.is_set():
+                        return event
+                    if event_type in (
+                        Quartz.kCGEventTapDisabledByTimeout,
+                        getattr(Quartz, "kCGEventTapDisabledByUserInput", -1),
+                    ):
+                        Quartz.CGEventTapEnable(self.mouse_tap, True)
+                        return event
+                    button_no = Quartz.CGEventGetIntegerValueField(
+                        event, Quartz.kCGMouseEventButtonNumber
+                    )
+                    if int(button_no) == target_button_number:
+                        self._fire_callback()
+                    return event
+
+                self.mouse_tap = Quartz.CGEventTapCreate(
+                    Quartz.kCGHIDEventTap,
+                    Quartz.kCGHeadInsertEventTap,
+                    Quartz.kCGEventTapOptionDefault,
+                    event_mask,
+                    handler,
+                    None,
+                )
+                if self.mouse_tap is None:
+                    startup_error["err"] = RuntimeError("Failed to create mouse event tap")
+                    started.set()
+                    return
+
+                source = Quartz.CFMachPortCreateRunLoopSource(None, self.mouse_tap, 0)
+                self.mouse_runloop = Quartz.CFRunLoopGetCurrent()
+                Quartz.CFRunLoopAddSource(
+                    self.mouse_runloop, source, Quartz.kCFRunLoopCommonModes
+                )
+                Quartz.CGEventTapEnable(self.mouse_tap, True)
+                started.set()
+                Quartz.CFRunLoopRun()
+            except Exception as exc:
+                startup_error["err"] = exc
+                started.set()
+
+        self.mouse_thread = threading.Thread(target=loop, daemon=True)
+        self.mouse_thread.start()
+        started.wait(timeout=1.5)
+        if startup_error["err"] is not None:
+            raise startup_error["err"]
+
+
+class SenseVoiceMenuBarApp(rumps.App):
+    def __init__(self):
+        super().__init__(
+            "SV Off",
+            icon=APP_ICON if Path(APP_ICON).exists() else None,
+            template=True,
+            quit_button=None,
+        )
+        self.core_config = load_core_config()
+        self.ui_settings = load_ui_settings()
+
+        self.current_status = "OFF"
+        self.dictation_enabled = False
+        self.updating_model = False
+        self.status_lock = threading.Lock()
+        self.pending_alerts: List[str] = []
+        self.pending_alerts_lock = threading.Lock()
+        self.pending_reenable = False
+
+        self.engine = DictationEngine(self.core_config, self.on_engine_status)
+        self.trigger = TriggerController(self.on_trigger)
+
+        self.status_item = rumps.MenuItem("Status: OFF")
+        self.trigger_item = rumps.MenuItem("Trigger: keyboard <ctrl>+<alt>+<space>")
+        self.auto_on_item = rumps.MenuItem("Enable Dictation On App Start")
+        self.build_item = rumps.MenuItem(f"Build: {APP_BUILD}")
+
+        self.menu = [
+            self.status_item,
+            self.trigger_item,
+            None,
+            "Toggle Dictation",
+            "Use Keyboard Trigger",
+            "Use Mouse Trigger",
+            "Set Keyboard Hotkey",
+            "Set Mouse Button",
+            "Update Model",
+            self.auto_on_item,
+            self.build_item,
+            None,
+            "Quit App",
+        ]
+
+        self.refresh_ui_labels()
+
+        if self.ui_settings.enable_dictation_on_app_start:
+            self.enable_dictation()
+
+    def on_engine_status(self, status: str) -> None:
+        with self.status_lock:
+            self.current_status = status
+
+    def _queue_alert(self, text: str) -> None:
+        with self.pending_alerts_lock:
+            self.pending_alerts.append(text)
+
+    def _flush_pending_alert(self) -> None:
+        msg = None
+        with self.pending_alerts_lock:
+            if self.pending_alerts:
+                msg = self.pending_alerts.pop(0)
+        if msg:
+            ui_alert(msg)
+
+    def _flush_pending_actions(self) -> None:
+        if self.pending_reenable:
+            self.pending_reenable = False
+            self.enable_dictation()
+
+    def on_trigger(self) -> None:
+        if not self.dictation_enabled or self.updating_model:
+            return
+        self.engine.toggle_recording()
+
+    def enable_dictation(self) -> None:
+        try:
+            logging.info("enable_dictation: mode=%s", self.ui_settings.trigger_mode)
+            if not ensure_listen_permission():
+                self.dictation_enabled = False
+                self.on_engine_status("ERROR")
+                ui_alert(
+                    "缺少权限：请在 系统设置 -> 隐私与安全性 中开启 Input Monitoring 和 Accessibility。"
+                )
+                return
+            if self.ui_settings.trigger_mode == "mouse":
+                self.trigger.start_mouse(self.ui_settings.mouse_button)
+            else:
+                self.trigger.start_keyboard(self.ui_settings.keyboard_hotkey)
+            self.dictation_enabled = True
+            self.engine.warmup_async()
+            self.on_engine_status("LOADING")
+        except Exception as exc:
+            logging.exception("enable_dictation failed: %s", exc)
+            self.dictation_enabled = False
+            self.on_engine_status("ERROR")
+
+    def disable_dictation(self) -> None:
+        self.dictation_enabled = False
+        self.trigger.stop()
+        self.engine.stop_all()
+        self.engine = DictationEngine(self.core_config, self.on_engine_status)
+        self.on_engine_status("OFF")
+
+    def refresh_ui_labels(self) -> None:
+        mode_text = f"{self.ui_settings.trigger_mode}"
+        if self.ui_settings.trigger_mode == "mouse":
+            mode_text += f" {self.ui_settings.mouse_button}"
+        else:
+            mode_text += f" {normalize_keyboard_hotkey(self.ui_settings.keyboard_hotkey)}"
+        self.trigger_item.title = f"Trigger: {mode_text}"
+
+        self.auto_on_item.state = 1 if self.ui_settings.enable_dictation_on_app_start else 0
+
+    def restart_trigger(self) -> None:
+        if not self.dictation_enabled:
+            return
+        try:
+            if self.ui_settings.trigger_mode == "mouse":
+                self.trigger.start_mouse(self.ui_settings.mouse_button)
+            else:
+                self.trigger.start_keyboard(self.ui_settings.keyboard_hotkey)
+        except Exception:
+            self.on_engine_status("ERROR")
+
+    @rumps.timer(0.1)
+    def sync_status(self, _):
+        self._flush_pending_alert()
+        self._flush_pending_actions()
+        with self.status_lock:
+            status = self.current_status
+        title_map = {
+            "OFF": "○",
+            "LOADING": "…",
+            "UPDATING": "⇡",
+            "READY": "✓",
+            "RECORDING": "●",
+            "TRANSCRIBING": "↻",
+            "ERROR": "!",
+        }
+        self.title = title_map.get(status, "•")
+        self.status_item.title = f"Status: {status}"
+
+    @rumps.clicked("Toggle Dictation")
+    def on_toggle_dictation(self, _):
+        if self.dictation_enabled:
+            self.disable_dictation()
+        else:
+            self.enable_dictation()
+
+    @rumps.clicked("Use Keyboard Trigger")
+    def on_use_keyboard(self, _):
+        logging.info("on_use_keyboard clicked")
+        if not ensure_listen_permission():
+            ui_alert(
+                "无法切换到键盘触发：系统未授予 Input Monitoring / Accessibility 权限。"
+            )
+            return
+        self.ui_settings.trigger_mode = "keyboard"
+        save_ui_settings(self.ui_settings)
+        self.refresh_ui_labels()
+        self.restart_trigger()
+
+    @rumps.clicked("Use Mouse Trigger")
+    def on_use_mouse(self, _):
+        self.ui_settings.trigger_mode = "mouse"
+        save_ui_settings(self.ui_settings)
+        self.refresh_ui_labels()
+        self.restart_trigger()
+
+    @rumps.clicked("Set Keyboard Hotkey")
+    def on_set_hotkey(self, _):
+        try:
+            logging.info("on_set_hotkey: start")
+            was_enabled = self.dictation_enabled
+            if was_enabled:
+                self.trigger.stop()
+            value = prompt_hotkey_text_fallback(self.ui_settings.keyboard_hotkey)
+            err = None if value else "manual input canceled/invalid"
+
+            if not value:
+                msg = f"No Key Captured. {err}" if err else "No Key Captured."
+                ui_alert(msg)
+                if was_enabled:
+                    self.restart_trigger()
+                return
+
+            self.ui_settings.keyboard_hotkey = value
+            self.ui_settings.trigger_mode = "keyboard"
+            save_ui_settings(self.ui_settings)
+            self.refresh_ui_labels()
+            if was_enabled:
+                self.restart_trigger()
+            ui_alert(f"已设置快捷键: {value}")
+            logging.info("on_set_hotkey: saved=%s", value)
+        except Exception as exc:
+            logging.exception("on_set_hotkey crashed: %s", exc)
+            ui_alert(f"Set Keyboard Hotkey failed: {exc}")
+
+    @rumps.clicked("Set Mouse Button")
+    def on_set_mouse_button(self, _):
+        try:
+            logging.info("on_set_mouse_button: start")
+            was_enabled = self.dictation_enabled
+            if was_enabled:
+                self.trigger.stop()
+
+            value = prompt_mouse_text_fallback(self.ui_settings.mouse_button)
+            if not value:
+                ui_alert("No Mouse Button Captured.")
+                if was_enabled:
+                    self.restart_trigger()
+                return
+
+            self.ui_settings.mouse_button = value
+            self.ui_settings.trigger_mode = "mouse"
+            save_ui_settings(self.ui_settings)
+            self.refresh_ui_labels()
+            if was_enabled:
+                self.restart_trigger()
+            ui_alert(f"已设置鼠标按键: {value}")
+            logging.info("on_set_mouse_button: saved=%s", value)
+        except Exception as exc:
+            logging.exception("on_set_mouse_button crashed: %s", exc)
+            ui_alert(f"Set Mouse Button failed: {exc}")
+
+    @rumps.clicked("Update Model")
+    def on_update_model(self, _):
+        if self.updating_model:
+            ui_alert("模型更新已在进行中。")
+            return
+        self.updating_model = True
+        threading.Thread(target=self._update_model_worker, daemon=True).start()
+
+    def _update_model_worker(self) -> None:
+        was_enabled = self.dictation_enabled
+        try:
+            self.on_engine_status("UPDATING")
+            self.dictation_enabled = False
+            self.trigger.stop()
+            self.engine.stop_all()
+
+            removed: List[str] = []
+            for path in MODEL_CACHE_DIRS:
+                if path.exists():
+                    shutil.rmtree(path, ignore_errors=True)
+                    removed.append(str(path))
+            logging.info("update_model: removed_cache=%s", removed)
+
+            self.engine = DictationEngine(self.core_config, self.on_engine_status)
+            self.engine.warmup_async()
+
+            wait_s = 0.0
+            while wait_s < 90:
+                with self.engine.lock:
+                    ready = self.engine.model is not None and not self.engine.model_loading
+                if ready:
+                    break
+                time.sleep(0.2)
+                wait_s += 0.2
+
+            with self.engine.lock:
+                ready = self.engine.model is not None and not self.engine.model_loading
+            if not ready:
+                self.on_engine_status("ERROR")
+                self._queue_alert("模型更新失败：下载或加载超时，请稍后重试。")
+                if was_enabled:
+                    self.pending_reenable = True
+                return
+
+            if was_enabled:
+                if self.ui_settings.trigger_mode == "mouse":
+                    self.trigger.start_mouse(self.ui_settings.mouse_button)
+                else:
+                    self.trigger.start_keyboard(self.ui_settings.keyboard_hotkey)
+                self.dictation_enabled = True
+                self.on_engine_status("READY")
+            else:
+                self.on_engine_status("OFF")
+
+            self._queue_alert("模型更新完成。")
+            logging.info("update_model: completed")
+        except Exception as exc:
+            logging.exception("update_model failed: %s", exc)
+            self.on_engine_status("ERROR")
+            self._queue_alert(f"模型更新失败: {exc}")
+            if was_enabled:
+                self.pending_reenable = True
+        finally:
+            self.updating_model = False
+
+    @rumps.clicked("Enable Dictation On App Start")
+    def on_toggle_auto_on(self, sender):
+        self.ui_settings.enable_dictation_on_app_start = not self.ui_settings.enable_dictation_on_app_start
+        save_ui_settings(self.ui_settings)
+        self.refresh_ui_labels()
+
+    @rumps.clicked("Quit App")
+    def on_quit(self, _):
+        self.trigger.stop()
+        self.engine.stop_all()
+        rumps.quit_application()
+
+
+def main() -> None:
+    # Keep the app in menu bar mode (hide Dock icon where possible).
+    try:
+        bundle = NSBundle.mainBundle()
+        if bundle is not None and bundle.infoDictionary() is not None:
+            bundle.infoDictionary()["LSUIElement"] = "1"
+        app = NSApplication.sharedApplication()
+        app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+        # Force app icon for all NSAlert/NSWindow created by rumps (avoid Python rocket icon).
+        if Path(APP_ICON).exists():
+            icon = NSImage.alloc().initWithContentsOfFile_(APP_ICON)
+            if icon is not None:
+                app.setApplicationIconImage_(icon)
+    except Exception:
+        pass
+
+    if not acquire_single_instance():
+        logging.info("another instance exists, skip launch")
+        return
+    atexit.register(release_single_instance)
+
+    app = SenseVoiceMenuBarApp()
+    app.run()
+
+
+if __name__ == "__main__":
+    main()

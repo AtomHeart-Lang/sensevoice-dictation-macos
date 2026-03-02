@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+*.log
+*.lock
+*.zip
+config.toml
+ui_settings.json
+menubar.out.log
+menubar.err.log
