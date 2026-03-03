@@ -80,8 +80,8 @@ PLIST
 
 launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
 launchctl bootout "$DOMAIN" "$PLIST" >/dev/null 2>&1 || true
-launchctl bootstrap "$DOMAIN" "$PLIST"
 launchctl enable "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
+launchctl bootstrap "$DOMAIN" "$PLIST"
 launchctl kickstart -k "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
 
 echo "[OK] Autostart enabled: $PLIST"

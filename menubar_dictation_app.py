@@ -355,13 +355,20 @@ def set_os_autostart_enabled(enable: bool) -> None:
     script = ENABLE_AUTOSTART_SCRIPT if enable else DISABLE_AUTOSTART_SCRIPT
     if not script.exists():
         raise RuntimeError(f"Autostart script not found: {script}")
-    subprocess.run(
+    proc = subprocess.run(
         ["/bin/bash", str(script)],
         cwd=str(APP_DIR),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        check=True,
+        capture_output=True,
+        text=True,
+        check=False,
     )
+    if proc.returncode != 0:
+        details = (proc.stderr or proc.stdout or "").strip()
+        if details:
+            raise RuntimeError(
+                f"autostart script failed with exit {proc.returncode}: {details}"
+            )
+        raise RuntimeError(f"autostart script failed with exit {proc.returncode}")
 
 
 def button_number_to_name(button_number: int) -> str:
