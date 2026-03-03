@@ -37,10 +37,13 @@ LOG_PATH = APP_DIR / "menubar_debug.log"
 LOCK_PATH = APP_DIR / "menubar_app.lock"
 MODEL_NAME = "iic/SenseVoiceSmall"
 APP_ICON = str((APP_DIR / "assets" / "mic_menu_icon.png").resolve())
-APP_BUILD = "2026-03-03-b11"
+APP_BUILD = "2026-03-03-b12"
 LOCK_FD = None
 EVENT_TAP_LOCATION = Quartz.kCGSessionEventTap
 AUTOSTART_PLIST = Path.home() / "Library/LaunchAgents/com.lee.sensevoice.menubar.plist"
+AUTOSTART_RUNNER = (
+    Path.home() / "Library/Application Support/SenseVoiceDictation/autostart_runner.sh"
+)
 ENABLE_AUTOSTART_SCRIPT = APP_DIR / "enable_autostart.sh"
 DISABLE_AUTOSTART_SCRIPT = APP_DIR / "disable_autostart.sh"
 MODEL_CACHE_DIRS = [
@@ -336,6 +339,16 @@ def ensure_listen_permission() -> bool:
 
 def is_os_autostart_enabled() -> bool:
     return AUTOSTART_PLIST.exists()
+
+
+def is_os_autostart_legacy() -> bool:
+    if not AUTOSTART_PLIST.exists():
+        return False
+    try:
+        content = AUTOSTART_PLIST.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return False
+    return str(AUTOSTART_RUNNER) not in content
 
 
 def set_os_autostart_enabled(enable: bool) -> None:
@@ -1100,6 +1113,7 @@ class SenseVoiceMenuBarApp(rumps.App):
         self.pending_alerts: List[str] = []
         self.pending_alerts_lock = threading.Lock()
         self.pending_reenable = False
+        self.pending_startup_enable = False
         self.permission_hint_shown = False
 
         self.engine = DictationEngine(self.core_config, self.on_engine_status)
@@ -1129,9 +1143,16 @@ class SenseVoiceMenuBarApp(rumps.App):
         ]
 
         self.refresh_ui_labels()
+        self._migrate_autostart_if_needed()
+        self.refresh_ui_labels()
 
         if self.ui_settings.enable_dictation_on_app_start:
-            self.enable_dictation()
+            # Show menubar status immediately, then enable in runloop.
+            self.on_engine_status("LOADING")
+            self.title = "…"
+            self.status_item.title = "Status: LOADING"
+            self.engine.warmup_async()
+            self.pending_startup_enable = True
 
     def on_engine_status(self, status: str) -> None:
         with self.status_lock:
@@ -1152,6 +1173,9 @@ class SenseVoiceMenuBarApp(rumps.App):
     def _flush_pending_actions(self) -> None:
         if self.pending_reenable:
             self.pending_reenable = False
+            self.enable_dictation()
+        if self.pending_startup_enable:
+            self.pending_startup_enable = False
             self.enable_dictation()
 
     def on_trigger(self) -> None:
@@ -1210,6 +1234,19 @@ class SenseVoiceMenuBarApp(rumps.App):
 
         self.auto_on_item.state = 1 if self.ui_settings.enable_dictation_on_app_start else 0
         self.launch_login_item.state = 1 if is_os_autostart_enabled() else 0
+
+    def _migrate_autostart_if_needed(self) -> None:
+        if not is_os_autostart_enabled() or not is_os_autostart_legacy():
+            return
+        try:
+            set_os_autostart_enabled(True)
+            logging.info("autostart migrated to runner: %s", AUTOSTART_RUNNER)
+        except Exception as exc:
+            logging.exception("autostart migration failed: %s", exc)
+            self._queue_alert(
+                "检测到旧版开机自启动配置，自动迁移失败。"
+                "请在菜单中关闭再开启一次 “Enable Launch At Login”。"
+            )
 
     def restart_trigger(self) -> None:
         if not self.dictation_enabled:

@@ -3,8 +3,40 @@ set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLIST="$HOME/Library/LaunchAgents/com.lee.sensevoice.menubar.plist"
+LABEL="com.lee.sensevoice.menubar"
+DOMAIN="gui/$(id -u)"
+AUTOSTART_DIR="$HOME/Library/Application Support/SenseVoiceDictation"
+AUTOSTART_RUNNER="$AUTOSTART_DIR/autostart_runner.sh"
+AUTOSTART_LOG_DIR="$HOME/Library/Logs/SenseVoiceDictation"
 
 mkdir -p "$HOME/Library/LaunchAgents"
+mkdir -p "$AUTOSTART_DIR"
+mkdir -p "$AUTOSTART_LOG_DIR"
+
+cat > "$AUTOSTART_RUNNER" <<'RUNNER'
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_DIR="__APP_DIR__"
+START_SCRIPT="$APP_DIR/start_app.sh"
+RUNTIME_LOG="$APP_DIR/menubar_runtime.log"
+WAIT_LOG="$HOME/Library/Logs/SenseVoiceDictation/autostart_wait.log"
+
+wait_round=0
+while [[ ! -d "$APP_DIR" || ! -x "$START_SCRIPT" ]]; do
+  wait_round=$((wait_round + 1))
+  if (( wait_round % 15 == 0 )); then
+    echo "[$(date '+%F %T')] waiting for app dir: $APP_DIR" >> "$WAIT_LOG"
+  fi
+  sleep 2
+done
+
+cd "$APP_DIR"
+exec /bin/bash "$START_SCRIPT" >>"$RUNTIME_LOG" 2>&1
+RUNNER
+
+sed -i '' "s|__APP_DIR__|$APP_DIR|g" "$AUTOSTART_RUNNER"
+chmod +x "$AUTOSTART_RUNNER"
 
 cat > "$PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -12,33 +44,45 @@ cat > "$PLIST" <<PLIST
 <plist version="1.0">
   <dict>
     <key>Label</key>
-    <string>com.lee.sensevoice.menubar</string>
+    <string>$LABEL</string>
 
     <key>ProgramArguments</key>
     <array>
       <string>/bin/bash</string>
-      <string>$APP_DIR/start_app.sh</string>
+      <string>$AUTOSTART_RUNNER</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>$APP_DIR</string>
+    <string>$AUTOSTART_DIR</string>
 
     <key>RunAtLoad</key>
     <true/>
 
     <key>KeepAlive</key>
-    <true/>
+    <dict>
+      <key>SuccessfulExit</key>
+      <false/>
+    </dict>
+
+    <key>LimitLoadToSessionType</key>
+    <array>
+      <string>Aqua</string>
+    </array>
 
     <key>StandardOutPath</key>
-    <string>$APP_DIR/menubar.out.log</string>
+    <string>$AUTOSTART_LOG_DIR/launchagent.out.log</string>
 
     <key>StandardErrorPath</key>
-    <string>$APP_DIR/menubar.err.log</string>
+    <string>$AUTOSTART_LOG_DIR/launchagent.err.log</string>
   </dict>
 </plist>
 PLIST
 
-launchctl unload "$PLIST" >/dev/null 2>&1 || true
-launchctl load "$PLIST"
+launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
+launchctl bootout "$DOMAIN" "$PLIST" >/dev/null 2>&1 || true
+launchctl bootstrap "$DOMAIN" "$PLIST"
+launchctl enable "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
+launchctl kickstart -k "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
 
 echo "[OK] Autostart enabled: $PLIST"
+echo "[OK] Autostart runner: $AUTOSTART_RUNNER"

@@ -2,6 +2,10 @@
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
+LAUNCH_LABEL="com.lee.sensevoice.menubar"
+LAUNCH_DOMAIN="gui/$(id -u)"
+AUTOSTART_DIR="$HOME/Library/Application Support/SenseVoiceDictation"
+AUTOSTART_LOG_DIR="$HOME/Library/Logs/SenseVoiceDictation"
 DELETE_DIR=0
 for arg in "$@"; do
   case "$arg" in
@@ -33,8 +37,11 @@ TCC_IDS=(
 
 
 echo "[Step] Disable launch agents"
+launchctl bootout "$LAUNCH_DOMAIN/$LAUNCH_LABEL" >/dev/null 2>&1 || true
+launchctl disable "$LAUNCH_DOMAIN/$LAUNCH_LABEL" >/dev/null 2>&1 || true
 for p in "${PLISTS[@]}"; do
   if [[ -f "$p" ]]; then
+    launchctl bootout "$LAUNCH_DOMAIN" "$p" >/dev/null 2>&1 || true
     launchctl unload "$p" >/dev/null 2>&1 || true
     rm -f "$p"
     echo "  - removed $p"
@@ -65,6 +72,7 @@ rm -f "$APP_DIR/menubar.out.log" "$APP_DIR/menubar.err.log"
 rm -f "$APP_DIR"/*.lock
 rm -f "$APP_DIR/ui_settings.json"
 rm -f "$APP_DIR/config.toml"
+rm -rf "$AUTOSTART_DIR" "$AUTOSTART_LOG_DIR"
 rm -f /tmp/sensevoice_menubar.log /tmp/sensevoice_menubar_debug.log
 
 echo "[Step] Reset TCC permissions (best effort)"
