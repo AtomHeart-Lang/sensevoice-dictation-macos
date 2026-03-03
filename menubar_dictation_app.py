@@ -143,8 +143,8 @@ I18N = {
         "en": "Edit and save runtime parameters directly",
     },
     "model_config_hint": {
-        "zh": "建议：batch_size_s=6~12；merge_vad=false 通常标点更稳定。",
-        "en": "Tips: batch_size_s 6~12; merge_vad=false for better punctuation stability.",
+        "zh": "默认推荐：use_itn=true，batch_size_s=11，merge_vad=true，paste_delay_ms=20。",
+        "en": "Default recommendation: use_itn=true, batch_size_s=11, merge_vad=true, paste_delay_ms=20.",
     },
     "manual_hotkey_prompt": {
         "zh": "手动输入快捷键（例如 <ctrl>+<alt>+<space> 或 f8）",
@@ -477,11 +477,11 @@ class CoreConfig:
     language: str = "auto"
     sample_rate: int = 16000
     channels: int = 1
-    paste_delay_ms: int = 40
+    paste_delay_ms: int = 20
     enable_beep: bool = True
-    use_itn: bool = False
-    batch_size_s: int = 10
-    merge_vad: bool = False
+    use_itn: bool = True
+    batch_size_s: int = 11
+    merge_vad: bool = True
     remove_emoji: bool = True
 
 
@@ -503,11 +503,11 @@ def load_core_config() -> CoreConfig:
         language=str(data.get("language", "auto")),
         sample_rate=int(data.get("sample_rate", 16000)),
         channels=int(data.get("channels", 1)),
-        paste_delay_ms=int(data.get("paste_delay_ms", 40)),
+        paste_delay_ms=int(data.get("paste_delay_ms", 20)),
         enable_beep=bool(data.get("enable_beep", True)),
-        use_itn=bool(data.get("use_itn", False)),
-        batch_size_s=int(data.get("batch_size_s", 10)),
-        merge_vad=bool(data.get("merge_vad", False)),
+        use_itn=bool(data.get("use_itn", True)),
+        batch_size_s=int(data.get("batch_size_s", 11)),
+        merge_vad=bool(data.get("merge_vad", True)),
         remove_emoji=bool(data.get("remove_emoji", True)),
     )
 
@@ -549,7 +549,7 @@ def save_core_config(config: CoreConfig) -> None:
         "# seconds per decode batch; higher=faster, lower=usually better segmentation stability.\n"
         "# recommended: 6~12\n"
         f"batch_size_s = {int(config.batch_size_s)}\n"
-        "# false=keep VAD segments (usually better punctuation/pauses), true=merge for possible speed gain.\n"
+        "# false=keep VAD segments, true=merge segments for potentially faster decoding.\n"
         f"merge_vad = {b(bool(config.merge_vad))}\n\n"
         "# Remove emoji symbols from final pasted text.\n"
         f"remove_emoji = {b(bool(config.remove_emoji))}\n"

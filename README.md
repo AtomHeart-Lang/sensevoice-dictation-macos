@@ -62,9 +62,20 @@ The UI writes values into `config.toml` for persistence. Manual file editing is 
 
 - `language`: `auto|zh|en|yue|ja|ko|nospeech` (for Chinese accuracy, prefer `zh`)
 - `use_itn`: enable text normalization for numbers/date formatting
-- `batch_size_s`: inference batch seconds (default `10`)
-- `merge_vad`: merge VAD segments (default `false`)
+- `batch_size_s`: inference batch seconds (default `11`)
+- `merge_vad`: merge VAD segments (default `true`)
 - `remove_emoji`: remove emoji symbols from final pasted text (default `true`)
+
+Default recommended preset in this release:
+- `language = "auto"`
+- `sample_rate = 16000`
+- `channels = 1`
+- `paste_delay_ms = 20`
+- `enable_beep = true`
+- `use_itn = true`
+- `batch_size_s = 11`
+- `merge_vad = true`
+- `remove_emoji = true`
 
 You can also edit these at runtime from menu `Model Config` (no manual file editing required).
 
@@ -88,17 +99,17 @@ Model Config fields in UI:
 
 Practical presets:
 - Accuracy-first dictation: `batch_size_s = 6`
-- Balanced default: `batch_size_s = 10`
+- Balanced default: `batch_size_s = 11`
 - Long-form speed-first: `batch_size_s = 12`
 
 ### `merge_vad` (segment strategy)
 
 - Meaning: whether to merge neighboring VAD (voice activity detection) segments before decoding.
-- `false` (recommended): keep segments separated; better for pauses and punctuation stability.
-- `true`: merge segments; can reduce overhead for fragmented speech, but may slightly hurt punctuation/segmentation quality.
+- `false`: keep segments separated.
+- `true` (default in this project): merge segments and reduce decode overhead in practical dictation.
 
 Practical recommendation:
-- For your goal (keep speed good, improve accuracy): keep `merge_vad = false`.
+- For the current project preset (fast + stable in real usage): keep `merge_vad = true`.
 
 ### How to change
 
@@ -110,8 +121,9 @@ Optional (advanced): edit `config.toml` manually, for example:
 
 ```toml
 language = "zh"
-batch_size_s = 6
-merge_vad = false
+batch_size_s = 11
+merge_vad = true
+use_itn = true
 remove_emoji = true
 ```
 

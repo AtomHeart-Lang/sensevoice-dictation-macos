@@ -14,19 +14,19 @@ sample_rate = 16000
 channels = 1
 
 # Paste behavior (actual runtime clamps this into 15~60ms)
-paste_delay_ms = 40
+paste_delay_ms = 20
 
 # Enable system sound when start/stop recording
 enable_beep = true
 
 # SenseVoice inference options
 # ITN: normalize numbers/date etc., may improve readability in some cases.
-use_itn = false
+use_itn = true
 # seconds per decode batch; higher=faster, lower=usually better segmentation stability.
 # recommended: 6~12
-batch_size_s = 10
+batch_size_s = 11
 # false=keep VAD segments (usually better punctuation/pauses), true=merge for possible speed gain.
-merge_vad = false
+merge_vad = true
 
 # Remove emoji symbols from final pasted text.
 remove_emoji = true
