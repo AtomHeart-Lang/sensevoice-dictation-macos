@@ -115,6 +115,7 @@ remove_emoji = true
 - `Use Mouse Trigger`
 - `Set Keyboard Hotkey`
 - `Set Mouse Button`
+- `Model Config`
 - `Update Model`
 - `Enable Dictation On App Start`
 - `Enable Launch At Login`

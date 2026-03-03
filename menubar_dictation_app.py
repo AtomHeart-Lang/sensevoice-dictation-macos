@@ -38,7 +38,7 @@ LOG_PATH = APP_DIR / "menubar_debug.log"
 LOCK_PATH = APP_DIR / "menubar_app.lock"
 MODEL_NAME = "iic/SenseVoiceSmall"
 APP_ICON = str((APP_DIR / "assets" / "mic_menu_icon.png").resolve())
-APP_BUILD = "2026-03-03-b12"
+APP_BUILD = "2026-03-03-b13"
 LOCK_FD = None
 EVENT_TAP_LOCATION = Quartz.kCGSessionEventTap
 EMOJI_RE = re.compile(
@@ -165,6 +165,219 @@ def load_core_config() -> CoreConfig:
         merge_vad=bool(data.get("merge_vad", False)),
         remove_emoji=bool(data.get("remove_emoji", True)),
     )
+
+
+def save_core_config(config: CoreConfig) -> None:
+    hotkey = "<ctrl>+<alt>+<space>"
+    if CONFIG_PATH.exists():
+        try:
+            with open(CONFIG_PATH, "rb") as f:
+                data = tomllib.load(f)
+            hotkey = str(data.get("hotkey", hotkey))
+        except Exception:
+            pass
+
+    def b(v: bool) -> str:
+        return "true" if v else "false"
+
+    language = config.language.replace('"', "").strip() or "auto"
+    content = (
+        "# Global hotkey format follows pynput format.\n"
+        "# Common examples:\n"
+        "#   <ctrl>+<alt>+<space>\n"
+        "#   <cmd>+<shift>+v\n"
+        "#   <ctrl>+<option>+r\n"
+        f'hotkey = "{hotkey}"\n\n'
+        "# SenseVoice language: auto, zh, en, yue, ja, ko, nospeech\n"
+        '# For better Chinese accuracy, prefer "zh" instead of "auto".\n'
+        f'language = "{language}"\n\n'
+        "# Audio configuration\n"
+        f"sample_rate = {int(config.sample_rate)}\n"
+        f"channels = {int(config.channels)}\n\n"
+        "# Paste behavior (actual runtime clamps this into 15~60ms)\n"
+        f"paste_delay_ms = {int(config.paste_delay_ms)}\n\n"
+        "# Enable system sound when start/stop recording\n"
+        f"enable_beep = {b(bool(config.enable_beep))}\n\n"
+        "# SenseVoice inference options\n"
+        "# ITN: normalize numbers/date etc., may improve readability in some cases.\n"
+        f"use_itn = {b(bool(config.use_itn))}\n"
+        "# seconds per decode batch; higher=faster, lower=usually better segmentation stability.\n"
+        "# recommended: 6~12\n"
+        f"batch_size_s = {int(config.batch_size_s)}\n"
+        "# false=keep VAD segments (usually better punctuation/pauses), true=merge for possible speed gain.\n"
+        f"merge_vad = {b(bool(config.merge_vad))}\n\n"
+        "# Remove emoji symbols from final pasted text.\n"
+        f"remove_emoji = {b(bool(config.remove_emoji))}\n"
+    )
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
+def ui_edit_model_config(current: CoreConfig) -> Optional[CoreConfig]:
+    script = r"""
+import json
+import os
+import sys
+import tkinter as tk
+from tkinter import messagebox, ttk
+
+data = json.loads(sys.stdin.read() or "{}")
+state = {"result": None}
+
+root = tk.Tk()
+root.title("Model Config")
+root.resizable(False, False)
+root.geometry("+520+220")
+
+icon_path = os.environ.get("SV_ICON_PATH", "")
+if icon_path and os.path.exists(icon_path):
+    try:
+        icon = tk.PhotoImage(file=icon_path)
+        root.iconphoto(True, icon)
+        root._icon_ref = icon
+    except Exception:
+        pass
+
+main = ttk.Frame(root, padding=12)
+main.grid(row=0, column=0, sticky="nsew")
+
+labels = {
+    "language": "language",
+    "sample_rate": "sample_rate",
+    "channels": "channels",
+    "paste_delay_ms": "paste_delay_ms",
+    "batch_size_s": "batch_size_s",
+}
+
+language_var = tk.StringVar(value=str(data.get("language", "auto")))
+sample_rate_var = tk.StringVar(value=str(data.get("sample_rate", 16000)))
+channels_var = tk.StringVar(value=str(data.get("channels", 1)))
+paste_delay_var = tk.StringVar(value=str(data.get("paste_delay_ms", 40)))
+batch_size_var = tk.StringVar(value=str(data.get("batch_size_s", 10)))
+
+enable_beep_var = tk.BooleanVar(value=bool(data.get("enable_beep", True)))
+use_itn_var = tk.BooleanVar(value=bool(data.get("use_itn", False)))
+merge_vad_var = tk.BooleanVar(value=bool(data.get("merge_vad", False)))
+remove_emoji_var = tk.BooleanVar(value=bool(data.get("remove_emoji", True)))
+
+row = 0
+ttk.Label(main, text="All config.toml runtime settings", font=("", 12, "bold")).grid(row=row, column=0, columnspan=2, sticky="w", pady=(0, 8))
+row += 1
+
+ttk.Label(main, text=labels["language"]).grid(row=row, column=0, sticky="w", padx=(0, 12), pady=3)
+language_entry = ttk.Combobox(main, textvariable=language_var, width=24)
+language_entry["values"] = ("auto", "zh", "en", "yue", "ja", "ko", "nospeech")
+language_entry.grid(row=row, column=1, sticky="ew", pady=3)
+row += 1
+
+ttk.Label(main, text=labels["sample_rate"]).grid(row=row, column=0, sticky="w", padx=(0, 12), pady=3)
+ttk.Entry(main, textvariable=sample_rate_var, width=26).grid(row=row, column=1, sticky="ew", pady=3)
+row += 1
+
+ttk.Label(main, text=labels["channels"]).grid(row=row, column=0, sticky="w", padx=(0, 12), pady=3)
+ttk.Entry(main, textvariable=channels_var, width=26).grid(row=row, column=1, sticky="ew", pady=3)
+row += 1
+
+ttk.Label(main, text=labels["paste_delay_ms"]).grid(row=row, column=0, sticky="w", padx=(0, 12), pady=3)
+ttk.Entry(main, textvariable=paste_delay_var, width=26).grid(row=row, column=1, sticky="ew", pady=3)
+row += 1
+
+ttk.Label(main, text=labels["batch_size_s"]).grid(row=row, column=0, sticky="w", padx=(0, 12), pady=3)
+ttk.Entry(main, textvariable=batch_size_var, width=26).grid(row=row, column=1, sticky="ew", pady=3)
+row += 1
+
+ttk.Checkbutton(main, text="enable_beep", variable=enable_beep_var).grid(row=row, column=0, columnspan=2, sticky="w", pady=(6, 2))
+row += 1
+ttk.Checkbutton(main, text="use_itn", variable=use_itn_var).grid(row=row, column=0, columnspan=2, sticky="w", pady=2)
+row += 1
+ttk.Checkbutton(main, text="merge_vad", variable=merge_vad_var).grid(row=row, column=0, columnspan=2, sticky="w", pady=2)
+row += 1
+ttk.Checkbutton(main, text="remove_emoji", variable=remove_emoji_var).grid(row=row, column=0, columnspan=2, sticky="w", pady=(2, 8))
+row += 1
+
+ttk.Label(main, text="Tips: batch_size_s 6~12; merge_vad=false for better punctuation stability.", foreground="#666666").grid(row=row, column=0, columnspan=2, sticky="w", pady=(0, 8))
+row += 1
+
+def to_int(raw, name, min_value, max_value):
+    try:
+        value = int(raw)
+    except Exception:
+        raise ValueError(f"{name} must be an integer")
+    if value < min_value or value > max_value:
+        raise ValueError(f"{name} must be in [{min_value}, {max_value}]")
+    return value
+
+def on_save():
+    try:
+        language = language_var.get().strip().lower()
+        if not language:
+            raise ValueError("language cannot be empty")
+        sample_rate = to_int(sample_rate_var.get(), "sample_rate", 8000, 48000)
+        channels = to_int(channels_var.get(), "channels", 1, 2)
+        paste_delay_ms = to_int(paste_delay_var.get(), "paste_delay_ms", 0, 1000)
+        batch_size_s = to_int(batch_size_var.get(), "batch_size_s", 1, 60)
+        state["result"] = {
+            "language": language,
+            "sample_rate": sample_rate,
+            "channels": channels,
+            "paste_delay_ms": paste_delay_ms,
+            "enable_beep": bool(enable_beep_var.get()),
+            "use_itn": bool(use_itn_var.get()),
+            "batch_size_s": batch_size_s,
+            "merge_vad": bool(merge_vad_var.get()),
+            "remove_emoji": bool(remove_emoji_var.get()),
+        }
+        root.quit()
+    except Exception as exc:
+        messagebox.showerror("Invalid Config", str(exc))
+
+def on_cancel():
+    root.quit()
+
+btns = ttk.Frame(main)
+btns.grid(row=row, column=0, columnspan=2, sticky="e")
+ttk.Button(btns, text="Cancel", command=on_cancel).grid(row=0, column=0, padx=(0, 8))
+ttk.Button(btns, text="Save", command=on_save).grid(row=0, column=1)
+
+root.columnconfigure(0, weight=1)
+main.columnconfigure(1, weight=1)
+root.mainloop()
+root.destroy()
+
+if state["result"] is None:
+    sys.exit(1)
+print(json.dumps(state["result"], ensure_ascii=False))
+"""
+    proc = subprocess.run(
+        [sys.executable, "-c", script],
+        input=json.dumps(asdict(current), ensure_ascii=False),
+        text=True,
+        capture_output=True,
+        cwd=str(APP_DIR),
+        env={**os.environ, "SV_ICON_PATH": APP_ICON},
+        check=False,
+    )
+    if proc.returncode != 0:
+        if proc.stderr.strip():
+            logging.warning("ui_edit_model_config canceled/error: %s", proc.stderr.strip())
+        return None
+    try:
+        data = json.loads(proc.stdout.strip())
+        return CoreConfig(
+            language=str(data.get("language", current.language)),
+            sample_rate=int(data.get("sample_rate", current.sample_rate)),
+            channels=int(data.get("channels", current.channels)),
+            paste_delay_ms=int(data.get("paste_delay_ms", current.paste_delay_ms)),
+            enable_beep=bool(data.get("enable_beep", current.enable_beep)),
+            use_itn=bool(data.get("use_itn", current.use_itn)),
+            batch_size_s=int(data.get("batch_size_s", current.batch_size_s)),
+            merge_vad=bool(data.get("merge_vad", current.merge_vad)),
+            remove_emoji=bool(data.get("remove_emoji", current.remove_emoji)),
+        )
+    except Exception as exc:
+        logging.warning("ui_edit_model_config parse failed: %s", exc)
+        ui_alert("Model Config 保存失败：返回数据格式无效。")
+        return None
 
 
 def load_ui_settings() -> UISettings:
@@ -1304,6 +1517,7 @@ class SenseVoiceMenuBarApp(rumps.App):
             "Use Mouse Trigger",
             "Set Keyboard Hotkey",
             "Set Mouse Button",
+            "Model Config",
             "Update Model",
             self.auto_on_item,
             self.launch_login_item,
@@ -1524,6 +1738,31 @@ class SenseVoiceMenuBarApp(rumps.App):
         except Exception as exc:
             logging.exception("on_set_mouse_button crashed: %s", exc)
             ui_alert(f"Set Mouse Button failed: {exc}")
+
+    @rumps.clicked("Model Config")
+    def on_model_config(self, _):
+        try:
+            logging.info("on_model_config: open")
+            edited = ui_edit_model_config(self.core_config)
+            if edited is None:
+                return
+            save_core_config(edited)
+            self.core_config = load_core_config()
+            self.engine.config = self.core_config
+            logging.info(
+                "on_model_config: saved language=%s sample_rate=%s channels=%s use_itn=%s batch_size_s=%s merge_vad=%s remove_emoji=%s",
+                self.core_config.language,
+                self.core_config.sample_rate,
+                self.core_config.channels,
+                self.core_config.use_itn,
+                self.core_config.batch_size_s,
+                self.core_config.merge_vad,
+                self.core_config.remove_emoji,
+            )
+            ui_alert("Model Config 已保存。新参数将从下一次录音开始生效。")
+        except Exception as exc:
+            logging.exception("on_model_config failed: %s", exc)
+            ui_alert(f"Model Config 保存失败: {exc}")
 
     @rumps.clicked("Update Model")
     def on_update_model(self, _):
