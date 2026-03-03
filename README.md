@@ -63,6 +63,41 @@ Edit `config.toml`:
 - `merge_vad`: merge VAD segments (default `false`)
 - `remove_emoji`: remove emoji symbols from final pasted text (default `true`)
 
+### `batch_size_s` (speed vs. precision)
+
+- Meaning: how many seconds of speech are packed per decoding batch.
+- Larger value: fewer decode rounds, usually faster overall.
+- Smaller value: finer-grained decoding, usually a bit more stable for punctuation/word boundaries.
+- Recommended range: `6` to `12`.
+
+Practical presets:
+- Accuracy-first dictation: `batch_size_s = 6`
+- Balanced default: `batch_size_s = 10`
+- Long-form speed-first: `batch_size_s = 12`
+
+### `merge_vad` (segment strategy)
+
+- Meaning: whether to merge neighboring VAD (voice activity detection) segments before decoding.
+- `false` (recommended): keep segments separated; better for pauses and punctuation stability.
+- `true`: merge segments; can reduce overhead for fragmented speech, but may slightly hurt punctuation/segmentation quality.
+
+Practical recommendation:
+- For your goal (keep speed good, improve accuracy): keep `merge_vad = false`.
+
+### How to change
+
+1. Open `config.toml`.
+2. Edit values, for example:
+
+```toml
+language = "zh"
+batch_size_s = 6
+merge_vad = false
+remove_emoji = true
+```
+
+3. Save and restart the menubar app.
+
 ## Menubar States
 
 - `○` OFF

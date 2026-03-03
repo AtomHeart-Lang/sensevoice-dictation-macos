@@ -22,7 +22,10 @@ enable_beep = true
 # SenseVoice inference options
 # ITN: normalize numbers/date etc., may improve readability in some cases.
 use_itn = false
+# seconds per decode batch; higher=faster, lower=usually better segmentation stability.
+# recommended: 6~12
 batch_size_s = 10
+# false=keep VAD segments (usually better punctuation/pauses), true=merge for possible speed gain.
 merge_vad = false
 
 # Remove emoji symbols from final pasted text.
