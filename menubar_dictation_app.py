@@ -701,14 +701,10 @@ def capture_mouse_button_pynput(timeout_s: float = 6.0):
 
 
 def choose_mouse_button_with_capture(current_value: str) -> Optional[str]:
-    try:
-        rumps.notification(
-            "SenseVoice Dictation",
-            "Set Mouse Button",
-            "请在 20 秒内点击目标鼠标键（左键/右键会忽略）。",
-        )
-    except Exception:
-        pass
+    ui_alert(
+        "点击 OK 后开始捕获 20 秒。\n"
+        "请按你要设置的鼠标键；左键/右键会忽略。"
+    )
     captured, err = capture_mouse_button(timeout_s=20.0, tap_location=EVENT_TAP_LOCATION)
     if not captured:
         hid_location = getattr(Quartz, "kCGHIDEventTap", None)
@@ -741,6 +737,17 @@ def choose_mouse_button_with_capture(current_value: str) -> Optional[str]:
             ui_alert("鼠标按键格式无效。支持 middle、x1、x2、buttonN（N>=2，且不含 0/1）。")
             return None
         return normalized
+
+    kb_value, _ = capture_keyboard_hotkey(timeout_s=4.0)
+    if kb_value:
+        ui_alert(
+            "未检测到可用鼠标按钮，但检测到按键组合："
+            f"{kb_value}\n"
+            "这通常表示鼠标驱动已把侧键映射为键盘快捷键。\n"
+            "你可以：\n"
+            "1) 在 Logi Options+ 把该按键改为 Generic Button；或\n"
+            "2) 直接用 Set Keyboard Hotkey 设置这个组合。"
+        )
 
     if err:
         ui_alert(f"自动识别失败：{err}\n将进入手动输入。")

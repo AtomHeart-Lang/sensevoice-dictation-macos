@@ -162,6 +162,7 @@ Important:
 - Mouse button numbering is device-dependent. `buttonN` means the raw button number reported by macOS for your specific mouse.
 - Recommended workflow: use `Set Mouse Button` and click your target mouse key to auto-capture it, then save.
 - Manual input is still supported for `middle`, `x1`, `x2`, and `buttonN` (`N >= 2`, except `0/1`).
+- For Logitech MX series: if side buttons are configured as gestures/keystrokes in Logi Options+, they may not appear as mouse button events. Set them to `Generic Button` first, or use keyboard trigger mode.
 
 ## Permissions
 

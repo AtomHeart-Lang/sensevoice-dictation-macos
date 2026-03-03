@@ -162,6 +162,7 @@ SenseVoice Dictation 是一个 macOS 菜单栏语音输入工具：
 - 鼠标按键编号依赖设备本身，`buttonN` 表示 macOS 上报的原始按键编号，不同鼠标可能不同。
 - 推荐流程：使用 `Set Mouse Button` 后直接点击目标鼠标键，让程序自动识别并回填再保存。
 - 仍保留手动输入，支持 `middle`、`x1`、`x2`、`buttonN`（`N >= 2`，且不含 `0/1`）。
+- 对 Logitech MX 系列：如果侧键在 Logi Options+ 中被配置为手势或快捷键，系统可能不会上报为鼠标按钮事件。请先改为 `Generic Button`，或改用键盘触发模式。
 
 ## 权限
 
