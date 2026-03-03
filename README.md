@@ -62,8 +62,8 @@ The UI writes values into `config.toml` for persistence. Manual file editing is 
 
 - `language`: `auto|zh|en|yue|ja|ko|nospeech` (for Chinese accuracy, prefer `zh`)
 - `use_itn`: enable text normalization for numbers/date formatting
-- `batch_size_s`: inference batch seconds (default `11`)
-- `merge_vad`: merge VAD segments (default `true`)
+- `batch_size_s`: inference batch seconds (default `9`)
+- `merge_vad`: merge VAD segments (default `false`)
 - `remove_emoji`: remove emoji symbols from final pasted text (default `true`)
 
 Default recommended preset in this release:
@@ -73,8 +73,8 @@ Default recommended preset in this release:
 - `paste_delay_ms = 20`
 - `enable_beep = true`
 - `use_itn = true`
-- `batch_size_s = 11`
-- `merge_vad = true`
+- `batch_size_s = 9`
+- `merge_vad = false`
 - `remove_emoji = true`
 
 You can also edit these at runtime from menu `Model Config` (no manual file editing required).
@@ -99,17 +99,17 @@ Model Config fields in UI:
 
 Practical presets:
 - Accuracy-first dictation: `batch_size_s = 6`
-- Balanced default: `batch_size_s = 11`
+- Balanced default: `batch_size_s = 9`
 - Long-form speed-first: `batch_size_s = 12`
 
 ### `merge_vad` (segment strategy)
 
 - Meaning: whether to merge neighboring VAD (voice activity detection) segments before decoding.
-- `false`: keep segments separated.
-- `true` (default in this project): merge segments and reduce decode overhead in practical dictation.
+- `false` (default in this project): keep segments separated for stronger segmentation stability.
+- `true`: merge segments and reduce decode overhead in some scenarios.
 
 Practical recommendation:
-- For the current project preset (fast + stable in real usage): keep `merge_vad = true`.
+- For the current project preset (fast + stable in real usage): keep `merge_vad = false`.
 
 ### How to change
 
@@ -121,8 +121,8 @@ Optional (advanced): edit `config.toml` manually, for example:
 
 ```toml
 language = "zh"
-batch_size_s = 11
-merge_vad = true
+batch_size_s = 9
+merge_vad = false
 use_itn = true
 remove_emoji = true
 ```

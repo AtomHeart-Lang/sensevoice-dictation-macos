@@ -143,8 +143,8 @@ I18N = {
         "en": "Edit and save runtime parameters directly",
     },
     "model_config_hint": {
-        "zh": "默认推荐：use_itn=true，batch_size_s=11，merge_vad=true，paste_delay_ms=20。",
-        "en": "Default recommendation: use_itn=true, batch_size_s=11, merge_vad=true, paste_delay_ms=20.",
+        "zh": "默认推荐：use_itn=true，batch_size_s=9，merge_vad=false，paste_delay_ms=20。",
+        "en": "Default recommendation: use_itn=true, batch_size_s=9, merge_vad=false, paste_delay_ms=20.",
     },
     "manual_hotkey_prompt": {
         "zh": "手动输入快捷键（例如 <ctrl>+<alt>+<space> 或 f8）",
@@ -480,8 +480,8 @@ class CoreConfig:
     paste_delay_ms: int = 20
     enable_beep: bool = True
     use_itn: bool = True
-    batch_size_s: int = 11
-    merge_vad: bool = True
+    batch_size_s: int = 9
+    merge_vad: bool = False
     remove_emoji: bool = True
 
 
@@ -506,8 +506,8 @@ def load_core_config() -> CoreConfig:
         paste_delay_ms=int(data.get("paste_delay_ms", 20)),
         enable_beep=bool(data.get("enable_beep", True)),
         use_itn=bool(data.get("use_itn", True)),
-        batch_size_s=int(data.get("batch_size_s", 11)),
-        merge_vad=bool(data.get("merge_vad", True)),
+        batch_size_s=int(data.get("batch_size_s", 9)),
+        merge_vad=bool(data.get("merge_vad", False)),
         remove_emoji=bool(data.get("remove_emoji", True)),
     )
 
