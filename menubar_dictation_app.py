@@ -92,6 +92,54 @@ def _applescript_escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace('"', '\\"')
 
 
+def _app_icon_image() -> Optional[NSImage]:
+    if not Path(APP_ICON).exists():
+        return None
+    icon = NSImage.alloc().initWithContentsOfFile_(APP_ICON)
+    return icon if icon is not None else None
+
+
+def ui_alert_native(message: str, title: str = "SenseVoice Dictation") -> None:
+    app = NSApplication.sharedApplication()
+    app.activateIgnoringOtherApps_(True)
+    alert = NSAlert.alloc().init()
+    alert.setMessageText_(title)
+    alert.setInformativeText_(message)
+    icon = _app_icon_image()
+    if icon is not None:
+        alert.setIcon_(icon)
+    alert.addButtonWithTitle_("OK")
+    alert.runModal()
+
+
+def ui_prompt_text_native(
+    message: str,
+    title: str,
+    default_text: str = "",
+    ok_text: str = "Save",
+    cancel_text: str = "Cancel",
+) -> Optional[str]:
+    app = NSApplication.sharedApplication()
+    app.activateIgnoringOtherApps_(True)
+    alert = NSAlert.alloc().init()
+    alert.setMessageText_(title)
+    alert.setInformativeText_(message)
+    icon = _app_icon_image()
+    if icon is not None:
+        alert.setIcon_(icon)
+    alert.addButtonWithTitle_(ok_text)
+    alert.addButtonWithTitle_(cancel_text)
+
+    field = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 0, 360, 24))
+    field.setStringValue_(default_text)
+    alert.setAccessoryView_(field)
+
+    resp = alert.runModal()
+    if resp != NSAlertFirstButtonReturn:
+        return None
+    return field.stringValue().strip()
+
+
 def ui_alert(message: str, title: str = "SenseVoice Dictation") -> None:
     icon_clause = ""
     if Path(APP_ICON).exists():
@@ -254,6 +302,9 @@ def ui_edit_model_config(current: CoreConfig) -> Optional[CoreConfig]:
         alert = NSAlert.alloc().init()
         alert.setMessageText_("Model Config")
         alert.setInformativeText_("Edit all config.toml runtime settings")
+        icon = _app_icon_image()
+        if icon is not None:
+            alert.setIcon_(icon)
         alert.addButtonWithTitle_("Save")
         alert.addButtonWithTitle_("Cancel")
 
@@ -339,7 +390,7 @@ def ui_edit_model_config(current: CoreConfig) -> Optional[CoreConfig]:
             )
         except Exception as exc:
             logging.warning("ui_edit_model_config invalid: %s", exc)
-            ui_alert(str(exc), title="Invalid Model Config")
+            ui_alert_native(str(exc), title="Invalid Model Config")
 
 
 def load_ui_settings() -> UISettings:
@@ -664,7 +715,7 @@ def capture_keyboard_hotkey(timeout_s: float = 8.0):
 
 
 def prompt_hotkey_text_fallback(current_value: str) -> Optional[str]:
-    text = ui_prompt_text(
+    text = ui_prompt_text_native(
         message="手动输入快捷键（例如 <ctrl>+<alt>+<space> 或 f8）",
         title="Set Keyboard Hotkey (Manual)",
         default_text=current_value,
@@ -675,7 +726,7 @@ def prompt_hotkey_text_fallback(current_value: str) -> Optional[str]:
         return None
     value = normalize_keyboard_hotkey(text)
     if not is_hotkey_supported(value):
-        ui_alert("快捷键格式无效或当前版本不支持该按键。")
+        ui_alert_native("快捷键格式无效或当前版本不支持该按键。", title="Set Keyboard Hotkey")
         return None
     return value
 
@@ -722,7 +773,7 @@ def normalize_mouse_button(value: str) -> Optional[str]:
 
 
 def prompt_mouse_text_fallback(current_value: str) -> Optional[str]:
-    text = ui_prompt_text(
+    text = ui_prompt_text_native(
         message="手动输入鼠标触发键（例如 x1、x2、middle、button8）。\n不支持 left/right。",
         title="Set Mouse Button (Manual)",
         default_text=current_value,
@@ -732,6 +783,37 @@ def prompt_mouse_text_fallback(current_value: str) -> Optional[str]:
     if text is None:
         return None
     return normalize_mouse_button(text)
+
+
+def choose_hotkey_with_capture(current_value: str) -> Optional[str]:
+    ui_alert_native(
+        "点击 OK 后开始捕获 8 秒。\n"
+        "请按下你要设置的快捷键组合。\n"
+        "按 Esc 可取消。",
+        title="Set Keyboard Hotkey",
+    )
+    captured, err = capture_keyboard_hotkey(timeout_s=8.0)
+    if captured:
+        edited = ui_prompt_text_native(
+            message=f"已识别到快捷键: {captured}\n可直接保存或手动修改。",
+            title="Set Keyboard Hotkey",
+            default_text=captured,
+            ok_text="保存",
+            cancel_text="取消",
+        )
+        if edited is None:
+            return None
+        value = normalize_keyboard_hotkey(edited)
+        if not is_hotkey_supported(value):
+            ui_alert_native("快捷键格式无效或当前版本不支持该按键。", title="Set Keyboard Hotkey")
+            return None
+        return value
+
+    if err:
+        ui_alert_native(f"自动识别失败：{err}\n将进入手动输入。", title="Set Keyboard Hotkey")
+    else:
+        ui_alert_native("未识别到快捷键，将进入手动输入。", title="Set Keyboard Hotkey")
+    return prompt_hotkey_text_fallback(current_value)
 
 
 def acquire_single_instance() -> bool:
@@ -900,9 +982,12 @@ def capture_mouse_button_pynput(timeout_s: float = 6.0):
 
 
 def choose_mouse_button_with_capture(current_value: str) -> Optional[str]:
-    ui_alert(
-        "点击 OK 后开始捕获 20 秒。\n"
-        "请按你要设置的鼠标键；左键/右键会忽略。"
+    ui_alert_native(
+        (
+            "点击 OK 后开始捕获 20 秒。\n"
+            "请按你要设置的鼠标键；左键/右键会忽略。"
+        ),
+        title="Set Mouse Button",
     )
     captured, err = capture_mouse_button(timeout_s=20.0, tap_location=EVENT_TAP_LOCATION)
     if not captured:
@@ -922,7 +1007,7 @@ def choose_mouse_button_with_capture(current_value: str) -> Optional[str]:
         elif err is None:
             err = fallback_err
     if captured:
-        edited = ui_prompt_text(
+        edited = ui_prompt_text_native(
             message=f"已识别到鼠标按键: {captured}\n可直接保存或手动修改。",
             title="Set Mouse Button",
             default_text=captured,
@@ -933,25 +1018,32 @@ def choose_mouse_button_with_capture(current_value: str) -> Optional[str]:
             return None
         normalized = normalize_mouse_button(edited)
         if normalized is None:
-            ui_alert("鼠标按键格式无效。支持 middle、x1、x2、buttonN（N>=2，且不含 0/1）。")
+            ui_alert_native(
+                "鼠标按键格式无效。支持 middle、x1、x2、buttonN（N>=2，且不含 0/1）。",
+                title="Set Mouse Button",
+            )
             return None
         return normalized
 
     kb_value, _ = capture_keyboard_hotkey(timeout_s=4.0)
     if kb_value:
-        ui_alert(
+        ui_alert_native(
             "未检测到可用鼠标按钮，但检测到按键组合："
             f"{kb_value}\n"
             "这通常表示鼠标驱动已把侧键映射为键盘快捷键。\n"
             "你可以：\n"
             "1) 在 Logi Options+ 把该按键改为 Generic Button；或\n"
-            "2) 直接用 Set Keyboard Hotkey 设置这个组合。"
+            "2) 直接用 Set Keyboard Hotkey 设置这个组合。",
+            title="Set Mouse Button",
         )
 
     if err:
-        ui_alert(f"自动识别失败：{err}\n将进入手动输入。")
+        ui_alert_native(f"自动识别失败：{err}\n将进入手动输入。", title="Set Mouse Button")
     else:
-        ui_alert("未识别到可用鼠标按键（左键/右键会被忽略）。将进入手动输入。")
+        ui_alert_native(
+            "未识别到可用鼠标按键（左键/右键会被忽略）。将进入手动输入。",
+            title="Set Mouse Button",
+        )
     return prompt_mouse_text_fallback(current_value)
 
 
@@ -1652,12 +1744,12 @@ class SenseVoiceMenuBarApp(rumps.App):
             was_enabled = self.dictation_enabled
             if was_enabled:
                 self.trigger.stop()
-            value = prompt_hotkey_text_fallback(self.ui_settings.keyboard_hotkey)
+            value = choose_hotkey_with_capture(self.ui_settings.keyboard_hotkey)
             err = None if value else "manual input canceled/invalid"
 
             if not value:
                 msg = f"No Key Captured. {err}" if err else "No Key Captured."
-                ui_alert(msg)
+                ui_alert_native(msg, title="Set Keyboard Hotkey")
                 if was_enabled:
                     self.restart_trigger()
                 return
@@ -1668,11 +1760,11 @@ class SenseVoiceMenuBarApp(rumps.App):
             self.refresh_ui_labels()
             if was_enabled:
                 self.restart_trigger()
-            ui_alert(f"已设置快捷键: {value}")
+            ui_alert_native(f"已设置快捷键: {value}", title="Set Keyboard Hotkey")
             logging.info("on_set_hotkey: saved=%s", value)
         except Exception as exc:
             logging.exception("on_set_hotkey crashed: %s", exc)
-            ui_alert(f"Set Keyboard Hotkey failed: {exc}")
+            ui_alert_native(f"Set Keyboard Hotkey failed: {exc}", title="Set Keyboard Hotkey")
 
     @rumps.clicked("Set Mouse Button")
     def on_set_mouse_button(self, _):
@@ -1684,7 +1776,7 @@ class SenseVoiceMenuBarApp(rumps.App):
 
             value = choose_mouse_button_with_capture(self.ui_settings.mouse_button)
             if not value:
-                ui_alert("No Mouse Button Captured.")
+                ui_alert_native("No Mouse Button Captured.", title="Set Mouse Button")
                 if was_enabled:
                     self.restart_trigger()
                 return
@@ -1695,11 +1787,11 @@ class SenseVoiceMenuBarApp(rumps.App):
             self.refresh_ui_labels()
             if was_enabled:
                 self.restart_trigger()
-            ui_alert(f"已设置鼠标按键: {value}")
+            ui_alert_native(f"已设置鼠标按键: {value}", title="Set Mouse Button")
             logging.info("on_set_mouse_button: saved=%s", value)
         except Exception as exc:
             logging.exception("on_set_mouse_button crashed: %s", exc)
-            ui_alert(f"Set Mouse Button failed: {exc}")
+            ui_alert_native(f"Set Mouse Button failed: {exc}", title="Set Mouse Button")
 
     @rumps.clicked("Model Config")
     def on_model_config(self, _):
@@ -1724,10 +1816,10 @@ class SenseVoiceMenuBarApp(rumps.App):
                 self.core_config.remove_emoji,
             )
             logging.info("on_model_config: saved in %.3fs", time.monotonic() - started)
-            ui_alert("Model Config 已保存。新参数将从下一次录音开始生效。")
+            ui_alert_native("Model Config 已保存。新参数将从下一次录音开始生效。", title="Model Config")
         except Exception as exc:
             logging.exception("on_model_config failed: %s", exc)
-            ui_alert(f"Model Config 保存失败: {exc}")
+            ui_alert_native(f"Model Config 保存失败: {exc}", title="Model Config")
 
     @rumps.clicked("Update Model")
     def on_update_model(self, _):
@@ -1808,7 +1900,10 @@ class SenseVoiceMenuBarApp(rumps.App):
             self.refresh_ui_labels()
         except Exception as exc:
             logging.exception("toggle launch at login failed: %s", exc)
-            ui_alert(f"Failed to update Launch At Login: {exc}")
+            ui_alert_native(
+                f"Failed to update Launch At Login: {exc}",
+                title="Enable Launch At Login",
+            )
 
     @rumps.clicked("Quit App")
     def on_quit(self, _):
