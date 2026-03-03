@@ -15,7 +15,7 @@ launchctl disable "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
 rm -f "$PLIST"
 rm -f "$AUTOSTART_RUNNER"
 rmdir "$AUTOSTART_DIR" >/dev/null 2>&1 || true
-rm -f "$AUTOSTART_LOG_DIR"/launchagent.out.log "$AUTOSTART_LOG_DIR"/launchagent.err.log "$AUTOSTART_LOG_DIR"/autostart_wait.log
+rm -f "$AUTOSTART_LOG_DIR"/launchagent.out.log "$AUTOSTART_LOG_DIR"/launchagent.err.log "$AUTOSTART_LOG_DIR"/autostart_wait.log "$AUTOSTART_LOG_DIR"/menubar_runtime.log
 rmdir "$AUTOSTART_LOG_DIR" >/dev/null 2>&1 || true
 
 echo "[OK] Autostart disabled."

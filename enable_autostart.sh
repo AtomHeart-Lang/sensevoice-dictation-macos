@@ -19,11 +19,12 @@ set -euo pipefail
 
 APP_DIR="__APP_DIR__"
 START_SCRIPT="$APP_DIR/start_app.sh"
-RUNTIME_LOG="$APP_DIR/menubar_runtime.log"
+LAUNCHER_APP="$HOME/Applications/SenseVoice Dictation.app"
+RUNTIME_LOG="$HOME/Library/Logs/SenseVoiceDictation/menubar_runtime.log"
 WAIT_LOG="$HOME/Library/Logs/SenseVoiceDictation/autostart_wait.log"
 
 wait_round=0
-while [[ ! -d "$APP_DIR" || ! -x "$START_SCRIPT" ]]; do
+while [[ ! -d "$APP_DIR" || ( ! -d "$LAUNCHER_APP" && ! -x "$START_SCRIPT" ) ]]; do
   wait_round=$((wait_round + 1))
   if (( wait_round % 15 == 0 )); then
     echo "[$(date '+%F %T')] waiting for app dir: $APP_DIR" >> "$WAIT_LOG"
@@ -31,8 +32,21 @@ while [[ ! -d "$APP_DIR" || ! -x "$START_SCRIPT" ]]; do
   sleep 2
 done
 
-cd "$APP_DIR"
-exec /bin/bash "$START_SCRIPT" >>"$RUNTIME_LOG" 2>&1
+if pgrep -f "[m]enubar_dictation_app.py" >/dev/null 2>&1; then
+  exit 0
+fi
+
+if [[ -d "$LAUNCHER_APP" ]]; then
+  exec /usr/bin/open -gj "$LAUNCHER_APP" >>"$RUNTIME_LOG" 2>&1
+fi
+
+if [[ -x "$START_SCRIPT" ]]; then
+  cd "$APP_DIR"
+  exec /bin/bash "$START_SCRIPT" >>"$RUNTIME_LOG" 2>&1
+fi
+
+echo "[$(date '+%F %T')] autostart failed: launcher/start script not found" >> "$RUNTIME_LOG"
+exit 1
 RUNNER
 
 sed -i '' "s|__APP_DIR__|$APP_DIR|g" "$AUTOSTART_RUNNER"
