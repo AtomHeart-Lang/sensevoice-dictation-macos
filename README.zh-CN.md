@@ -151,24 +151,17 @@ SenseVoice Dictation 是一个 macOS 菜单栏语音输入工具：
 
 ## 鼠标触发可用字符
 
-推荐值：
-- `left`
-- `right`
-- `middle`
-- `x1`
-- `x2`
-
-等价别名：
-- `button0` -> `left`
-- `button1` -> `right`
+支持值：
 - `button2` -> `middle`
 - `button3` -> `x1`
 - `button4` -> `x2`
-- `primary` -> `left`
-- `secondary` -> `right`
-
-扩展按键：
 - `button5` ... `button24`
+
+重要说明：
+- `left` 和 `right` 已禁用，避免和日常点击操作冲突。
+- 鼠标按键编号依赖设备本身，`buttonN` 表示 macOS 上报的原始按键编号，不同鼠标可能不同。
+- 推荐流程：使用 `Set Mouse Button` 后直接点击目标鼠标键，让程序自动识别并回填再保存。
+- 仍保留手动输入，支持 `middle`、`x1`、`x2`、`button5` ... `button24`。
 
 ## 权限
 

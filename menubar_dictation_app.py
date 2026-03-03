@@ -125,7 +125,7 @@ class UISettings:
     schema_version: int = 2
     trigger_mode: str = "keyboard"  # keyboard|mouse
     keyboard_hotkey: str = "<ctrl>+<alt>+<space>"
-    mouse_button: str = "x1"  # left|right|middle|x1|x2
+    mouse_button: str = "x1"  # middle|x1|x2|button5..button24
     enable_dictation_on_app_start: bool = True
 
 
@@ -162,6 +162,19 @@ def load_ui_settings() -> UISettings:
     )
     if is_legacy:
         settings.enable_dictation_on_app_start = True
+        save_ui_settings(settings)
+    legacy_mouse = settings.mouse_button.strip().lower().replace(" ", "")
+    if legacy_mouse in {
+        "left",
+        "right",
+        "button0",
+        "button1",
+        "primary",
+        "secondary",
+        "leftclick",
+        "rightclick",
+    }:
+        settings.mouse_button = "x1"
         save_ui_settings(settings)
     return settings
 
@@ -483,10 +496,6 @@ def is_hotkey_supported(hotkey: str) -> bool:
 def normalize_mouse_button(value: str) -> Optional[str]:
     raw = value.strip().lower().replace(" ", "")
     alias_map = {
-        "primary": "left",
-        "secondary": "right",
-        "leftclick": "left",
-        "rightclick": "right",
         "middleclick": "middle",
         "wheelclick": "middle",
         "xbutton1": "x1",
@@ -494,30 +503,26 @@ def normalize_mouse_button(value: str) -> Optional[str]:
     }
     raw = alias_map.get(raw, raw)
 
-    direct = {"left", "right", "middle", "x1", "x2"}
+    direct = {"middle", "x1", "x2"}
     if raw in direct:
         return raw
 
     if raw.startswith("button") and raw[6:].isdigit():
         idx = int(raw[6:])
-        if idx == 0:
-            return "left"
-        if idx == 1:
-            return "right"
         if idx == 2:
             return "middle"
         if idx == 3:
             return "x1"
         if idx == 4:
             return "x2"
-        if 0 <= idx <= 24:
+        if 5 <= idx <= 24:
             return f"button{idx}"
     return None
 
 
 def prompt_mouse_text_fallback(current_value: str) -> Optional[str]:
     text = ui_prompt_text(
-        message="手动输入鼠标触发键（例如 x1、left、button4）。",
+        message="手动输入鼠标触发键（例如 x1、x2、middle、button5）。\n不支持 left/right。",
         title="Set Mouse Button (Manual)",
         default_text=current_value,
         ok_text="保存",
@@ -579,7 +584,11 @@ def capture_mouse_button(timeout_s: float = 8.0):
             button_no = int(
                 Quartz.CGEventGetIntegerValueField(event, Quartz.kCGMouseEventButtonNumber)
             )
-            result["value"] = button_number_to_name(button_no)
+            mapped = button_number_to_name(button_no)
+            normalized = normalize_mouse_button(mapped)
+            if normalized is None:
+                return event
+            result["value"] = normalized
             done.set()
             if runloop_ref["loop"] is not None:
                 Quartz.CFRunLoopStop(runloop_ref["loop"])
@@ -621,6 +630,36 @@ def capture_mouse_button(timeout_s: float = 8.0):
     else:
         logging.info("capture_mouse_button: timeout")
     return result["value"], result["err"]
+
+
+def choose_mouse_button_with_capture(current_value: str) -> Optional[str]:
+    ui_alert(
+        "请在 8 秒内点击要设置的鼠标按键。\n"
+        "左键/右键会被忽略。\n"
+        "若未识别到，将进入手动输入。"
+    )
+    captured, err = capture_mouse_button(timeout_s=8.0)
+    if captured:
+        edited = ui_prompt_text(
+            message=f"已识别到鼠标按键: {captured}\n可直接保存或手动修改。",
+            title="Set Mouse Button",
+            default_text=captured,
+            ok_text="保存",
+            cancel_text="取消",
+        )
+        if edited is None:
+            return None
+        normalized = normalize_mouse_button(edited)
+        if normalized is None:
+            ui_alert("鼠标按键格式无效。支持 middle、x1、x2、button5..button24。")
+            return None
+        return normalized
+
+    if err:
+        ui_alert(f"自动识别失败：{err}\n将进入手动输入。")
+    else:
+        ui_alert("未识别到可用鼠标按键（左键/右键会被忽略）。将进入手动输入。")
+    return prompt_mouse_text_fallback(current_value)
 
 
 class DictationEngine:
@@ -860,8 +899,6 @@ class DictationEngine:
 
 class TriggerController:
     BUTTON_MAP = {
-        "left": 0,
-        "right": 1,
         "middle": 2,
         "x1": 3,
         "x2": 4,
@@ -1343,7 +1380,7 @@ class SenseVoiceMenuBarApp(rumps.App):
             if was_enabled:
                 self.trigger.stop()
 
-            value = prompt_mouse_text_fallback(self.ui_settings.mouse_button)
+            value = choose_mouse_button_with_capture(self.ui_settings.mouse_button)
             if not value:
                 ui_alert("No Mouse Button Captured.")
                 if was_enabled:

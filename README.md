@@ -151,24 +151,17 @@ Function keys:
 
 ## Mouse Trigger Token List
 
-Preferred values:
-- `left`
-- `right`
-- `middle`
-- `x1`
-- `x2`
-
-Equivalent aliases:
-- `button0` -> `left`
-- `button1` -> `right`
+Supported values:
 - `button2` -> `middle`
 - `button3` -> `x1`
 - `button4` -> `x2`
-- `primary` -> `left`
-- `secondary` -> `right`
-
-Extended buttons:
 - `button5` ... `button24`
+
+Important:
+- `left` and `right` are intentionally disabled to avoid conflicts with normal clicking.
+- Mouse button numbering is device-dependent. `buttonN` means the raw button number reported by macOS for your specific mouse.
+- Recommended workflow: use `Set Mouse Button` and click your target mouse key to auto-capture it, then save.
+- Manual input is still supported for `middle`, `x1`, `x2`, `button5` ... `button24`.
 
 ## Permissions
 
