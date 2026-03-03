@@ -63,6 +63,19 @@ SenseVoice Dictation 是一个 macOS 菜单栏语音输入工具：
 - `merge_vad`: 是否合并 VAD 分段（默认 `false`）
 - `remove_emoji`: 去除最终粘贴文本中的表情符号（默认 `true`）
 
+也可以在菜单 `Model Config` 中直接修改这些运行参数（无需手动编辑文件）。
+
+Model Config 窗口包含以下字段：
+- `language`
+- `sample_rate`
+- `channels`
+- `paste_delay_ms`
+- `batch_size_s`
+- `enable_beep`
+- `use_itn`
+- `merge_vad`
+- `remove_emoji`
+
 ### `batch_size_s`（速度与精度权衡）
 
 - 含义：每次解码打包的语音秒数。
@@ -120,6 +133,24 @@ remove_emoji = true
 - `Enable Dictation On App Start`
 - `Enable Launch At Login`
 - `Quit App`
+
+## 触发键设置流程
+
+### Set Keyboard Hotkey（键盘触发）
+
+1. 点击 `Set Keyboard Hotkey`。
+2. 选择 `开始识别` 或 `手动输入`。
+3. 若选择识别，程序会监听 8 秒，并弹出通知提醒你按下目标组合键。
+4. 识别成功后，会自动回填到输入框，可直接保存或手动修改。
+5. 识别失败时，可选择重试识别，或切换为手动输入。
+
+### Set Mouse Button（鼠标触发）
+
+1. 点击 `Set Mouse Button`。
+2. 选择 `开始识别` 或 `手动输入`。
+3. 若选择识别，程序会监听鼠标按钮事件（左键/右键会忽略）。
+4. 识别成功后，会自动回填到输入框，可直接保存或手动修改。
+5. 识别失败时，可选择重试识别，或切换为手动输入。
 
 ## 脚本说明
 

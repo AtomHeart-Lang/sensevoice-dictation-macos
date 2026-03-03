@@ -32,7 +32,7 @@ from AppKit import (
     NSTextField,
     NSView,
 )
-from Foundation import NSBundle
+from Foundation import NSBundle, NSDate, NSRunLoop
 from funasr import AutoModel
 from funasr.utils.postprocess_utils import rich_transcription_postprocess
 from pynput import keyboard, mouse
@@ -138,6 +138,65 @@ def ui_prompt_text_native(
     if resp != NSAlertFirstButtonReturn:
         return None
     return field.stringValue().strip()
+
+
+def ui_choice_native(
+    *,
+    title: str,
+    message: str,
+    primary_text: str,
+    secondary_text: str,
+    cancel_text: str = "Cancel",
+) -> str:
+    app = NSApplication.sharedApplication()
+    app.activateIgnoringOtherApps_(True)
+    alert = NSAlert.alloc().init()
+    alert.setMessageText_(title)
+    alert.setInformativeText_(message)
+    icon = _app_icon_image()
+    if icon is not None:
+        alert.setIcon_(icon)
+    alert.addButtonWithTitle_(primary_text)
+    alert.addButtonWithTitle_(secondary_text)
+    alert.addButtonWithTitle_(cancel_text)
+    resp = alert.runModal()
+    if resp == NSAlertFirstButtonReturn:
+        return "primary"
+    if resp == NSAlertFirstButtonReturn + 1:
+        return "secondary"
+    return "cancel"
+
+
+def run_with_ui_responsiveness(task_name: str, fn: Callable[[], object]):
+    done = threading.Event()
+    holder = {"value": None, "error": None, "elapsed": 0.0}
+
+    def worker():
+        started = time.monotonic()
+        try:
+            holder["value"] = fn()
+        except Exception as exc:
+            holder["error"] = exc
+        finally:
+            holder["elapsed"] = time.monotonic() - started
+            done.set()
+
+    threading.Thread(target=worker, daemon=True).start()
+    run_loop = NSRunLoop.currentRunLoop()
+    while not done.wait(0.03):
+        run_loop.runUntilDate_(NSDate.dateWithTimeIntervalSinceNow_(0.01))
+
+    logging.info("%s finished in %.3fs", task_name, holder["elapsed"])
+    if holder["error"] is not None:
+        raise holder["error"]
+    return holder["value"]
+
+
+def notify_user(title: str, subtitle: str, message: str) -> None:
+    try:
+        rumps.notification(title, subtitle, message)
+    except Exception as exc:
+        logging.debug("notification failed: %s", exc)
 
 
 def ui_alert(message: str, title: str = "SenseVoice Dictation") -> None:
@@ -786,13 +845,31 @@ def prompt_mouse_text_fallback(current_value: str) -> Optional[str]:
 
 
 def choose_hotkey_with_capture(current_value: str) -> Optional[str]:
-    ui_alert_native(
-        "点击 OK 后开始捕获 8 秒。\n"
-        "请按下你要设置的快捷键组合。\n"
-        "按 Esc 可取消。",
+    action = ui_choice_native(
         title="Set Keyboard Hotkey",
+        message=(
+            "选择设置方式：\n"
+            "1) 开始识别：8 秒内按下想设置的快捷键。\n"
+            "2) 手动输入：直接输入快捷键文本。"
+        ),
+        primary_text="开始识别",
+        secondary_text="手动输入",
+        cancel_text="取消",
     )
-    captured, err = capture_keyboard_hotkey(timeout_s=8.0)
+    if action == "cancel":
+        return None
+    if action == "secondary":
+        return prompt_hotkey_text_fallback(current_value)
+
+    notify_user(
+        "Set Keyboard Hotkey",
+        "Listening for 8 seconds",
+        "Press your desired key combination now. Esc cancels capture.",
+    )
+    captured, err = run_with_ui_responsiveness(
+        "capture_keyboard_hotkey",
+        lambda: capture_keyboard_hotkey(timeout_s=8.0),
+    )
     if captured:
         edited = ui_prompt_text_native(
             message=f"已识别到快捷键: {captured}\n可直接保存或手动修改。",
@@ -809,11 +886,21 @@ def choose_hotkey_with_capture(current_value: str) -> Optional[str]:
             return None
         return value
 
-    if err:
-        ui_alert_native(f"自动识别失败：{err}\n将进入手动输入。", title="Set Keyboard Hotkey")
-    else:
-        ui_alert_native("未识别到快捷键，将进入手动输入。", title="Set Keyboard Hotkey")
-    return prompt_hotkey_text_fallback(current_value)
+    retry_action = ui_choice_native(
+        title="Set Keyboard Hotkey",
+        message=(
+            f"自动识别失败：{err}" if err else "8 秒内未识别到快捷键。"
+        )
+        + "\n你可以重试识别，或手动输入。",
+        primary_text="重试识别",
+        secondary_text="手动输入",
+        cancel_text="取消",
+    )
+    if retry_action == "primary":
+        return choose_hotkey_with_capture(current_value)
+    if retry_action == "secondary":
+        return prompt_hotkey_text_fallback(current_value)
+    return None
 
 
 def acquire_single_instance() -> bool:
@@ -982,25 +1069,58 @@ def capture_mouse_button_pynput(timeout_s: float = 6.0):
 
 
 def choose_mouse_button_with_capture(current_value: str) -> Optional[str]:
-    ui_alert_native(
-        (
-            "点击 OK 后开始捕获 20 秒。\n"
-            "请按你要设置的鼠标键；左键/右键会忽略。"
-        ),
+    action = ui_choice_native(
         title="Set Mouse Button",
+        message=(
+            "选择设置方式：\n"
+            "1) 开始识别：20 秒内按下目标鼠标按键。\n"
+            "2) 手动输入：直接输入 middle/x1/x2/buttonN。"
+        ),
+        primary_text="开始识别",
+        secondary_text="手动输入",
+        cancel_text="取消",
     )
-    captured, err = capture_mouse_button(timeout_s=20.0, tap_location=EVENT_TAP_LOCATION)
+    if action == "cancel":
+        return None
+    if action == "secondary":
+        return prompt_mouse_text_fallback(current_value)
+
+    notify_user(
+        "Set Mouse Button",
+        "Listening for 20 seconds",
+        "Click your target mouse button now. Left/right are ignored.",
+    )
+    captured, err = run_with_ui_responsiveness(
+        "capture_mouse_button_primary",
+        lambda: capture_mouse_button(timeout_s=20.0, tap_location=EVENT_TAP_LOCATION),
+    )
     if not captured:
         hid_location = getattr(Quartz, "kCGHIDEventTap", None)
         if hid_location is not None:
-            hid_captured, hid_err = capture_mouse_button(timeout_s=8.0, tap_location=hid_location)
+            notify_user(
+                "Set Mouse Button",
+                "Fallback capture",
+                "Trying HID event tap fallback...",
+            )
+            hid_captured, hid_err = run_with_ui_responsiveness(
+                "capture_mouse_button_hid",
+                lambda: capture_mouse_button(timeout_s=8.0, tap_location=hid_location),
+            )
             if hid_captured:
                 captured = hid_captured
                 err = None
             elif err is None:
                 err = hid_err
     if not captured:
-        fallback_captured, fallback_err = capture_mouse_button_pynput(timeout_s=12.0)
+        notify_user(
+            "Set Mouse Button",
+            "Fallback capture",
+            "Trying pynput mouse listener fallback...",
+        )
+        fallback_captured, fallback_err = run_with_ui_responsiveness(
+            "capture_mouse_button_pynput",
+            lambda: capture_mouse_button_pynput(timeout_s=12.0),
+        )
         if fallback_captured:
             captured = fallback_captured
             err = None
@@ -1025,7 +1145,10 @@ def choose_mouse_button_with_capture(current_value: str) -> Optional[str]:
             return None
         return normalized
 
-    kb_value, _ = capture_keyboard_hotkey(timeout_s=4.0)
+    kb_value, _ = run_with_ui_responsiveness(
+        "capture_keyboard_hotkey_for_mouse_hint",
+        lambda: capture_keyboard_hotkey(timeout_s=4.0),
+    )
     if kb_value:
         ui_alert_native(
             "未检测到可用鼠标按钮，但检测到按键组合："
@@ -1037,14 +1160,21 @@ def choose_mouse_button_with_capture(current_value: str) -> Optional[str]:
             title="Set Mouse Button",
         )
 
-    if err:
-        ui_alert_native(f"自动识别失败：{err}\n将进入手动输入。", title="Set Mouse Button")
-    else:
-        ui_alert_native(
-            "未识别到可用鼠标按键（左键/右键会被忽略）。将进入手动输入。",
-            title="Set Mouse Button",
+    retry_action = ui_choice_native(
+        title="Set Mouse Button",
+        message=(
+            f"自动识别失败：{err}" if err else "未识别到可用鼠标按键（左键/右键会被忽略）。"
         )
-    return prompt_mouse_text_fallback(current_value)
+        + "\n你可以重试识别，或手动输入。",
+        primary_text="重试识别",
+        secondary_text="手动输入",
+        cancel_text="取消",
+    )
+    if retry_action == "primary":
+        return choose_mouse_button_with_capture(current_value)
+    if retry_action == "secondary":
+        return prompt_mouse_text_fallback(current_value)
+    return None
 
 
 class DictationEngine:

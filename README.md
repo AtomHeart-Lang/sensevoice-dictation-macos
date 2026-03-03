@@ -63,6 +63,19 @@ Edit `config.toml`:
 - `merge_vad`: merge VAD segments (default `false`)
 - `remove_emoji`: remove emoji symbols from final pasted text (default `true`)
 
+You can also edit these at runtime from menu `Model Config` (no manual file editing required).
+
+Model Config fields in UI:
+- `language`
+- `sample_rate`
+- `channels`
+- `paste_delay_ms`
+- `batch_size_s`
+- `enable_beep`
+- `use_itn`
+- `merge_vad`
+- `remove_emoji`
+
 ### `batch_size_s` (speed vs. precision)
 
 - Meaning: how many seconds of speech are packed per decoding batch.
@@ -120,6 +133,24 @@ remove_emoji = true
 - `Enable Dictation On App Start`
 - `Enable Launch At Login`
 - `Quit App`
+
+## Trigger Setup Flow
+
+### Set Keyboard Hotkey
+
+1. Click `Set Keyboard Hotkey`.
+2. Choose `Start Capture` or `Manual Input`.
+3. If capture is chosen, the app listens for 8 seconds and shows a notification prompt.
+4. If key capture succeeds, the recognized hotkey is pre-filled for confirmation/editing.
+5. If capture fails, you can retry capture or switch to manual input.
+
+### Set Mouse Button
+
+1. Click `Set Mouse Button`.
+2. Choose `Start Capture` or `Manual Input`.
+3. If capture is chosen, the app listens for mouse button events (left/right ignored).
+4. If capture succeeds, the recognized button token is pre-filled for confirmation/editing.
+5. If capture fails, you can retry capture or switch to manual input.
 
 ## Script Reference
 
