@@ -28,7 +28,7 @@ Compared with built-in dictation or many generic tools, this app focuses on:
 ## Requirements
 
 - macOS 11+
-- Python 3.11+
+- Python 3.11+ (installer will auto-install via Homebrew when missing)
 - Xcode Command Line Tools (`clang`) for launcher generation
 
 Optional:
@@ -46,6 +46,7 @@ Default installer behavior:
 3. create `config.toml` from `config.example.toml` if missing
 4. pre-download SenseVoice + VAD models
 5. create launcher app in `~/Applications` and Desktop shortcut symlink
+6. if Python 3.11+ is missing, auto-install Python via Homebrew (when `brew` is available)
 
 Installer options:
 - `--no-model`

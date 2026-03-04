@@ -37,12 +37,50 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 1
 fi
 
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "[ERROR] python3 not found. Install Python 3.11+ first."
+PYTHON_BIN=""
+
+python_ok() {
+  local py="$1"
+  "$py" - <<'PY' >/dev/null 2>&1
+import sys
+raise SystemExit(0 if sys.version_info >= (3, 11) else 1)
+PY
+}
+
+if command -v python3 >/dev/null 2>&1 && python_ok "$(command -v python3)"; then
+  PYTHON_BIN="$(command -v python3)"
+fi
+
+if [[ -z "$PYTHON_BIN" ]]; then
+  echo "[Step] Python 3.11+ not found. Trying to install via Homebrew."
+  if ! command -v brew >/dev/null 2>&1; then
+    echo "[ERROR] Homebrew is required for automatic Python installation."
+    echo "Install Homebrew first: https://brew.sh"
+    echo "Then rerun: ./install.sh"
+    exit 1
+  fi
+
+  if ! brew list --versions python@3.11 >/dev/null 2>&1; then
+    brew install python@3.11 || brew install python
+  else
+    brew upgrade python@3.11 || true
+  fi
+
+  if command -v python3 >/dev/null 2>&1 && python_ok "$(command -v python3)"; then
+    PYTHON_BIN="$(command -v python3)"
+  elif [[ -x /opt/homebrew/opt/python@3.11/bin/python3.11 ]] && python_ok /opt/homebrew/opt/python@3.11/bin/python3.11; then
+    PYTHON_BIN="/opt/homebrew/opt/python@3.11/bin/python3.11"
+  elif [[ -x /usr/local/opt/python@3.11/bin/python3.11 ]] && python_ok /usr/local/opt/python@3.11/bin/python3.11; then
+    PYTHON_BIN="/usr/local/opt/python@3.11/bin/python3.11"
+  fi
+fi
+
+if [[ -z "$PYTHON_BIN" ]]; then
+  echo "[ERROR] Python 3.11+ installation/lookup failed."
   exit 1
 fi
 
-python3 - <<'PY'
+"$PYTHON_BIN" - <<'PY'
 import sys
 if sys.version_info < (3, 11):
     raise SystemExit('[ERROR] Python 3.11+ required')
@@ -51,7 +89,7 @@ PY
 
 if [[ ! -d .venv ]]; then
   echo "[Step] Creating virtual environment (.venv)"
-  python3 -m venv .venv
+  "$PYTHON_BIN" -m venv .venv
 fi
 
 source .venv/bin/activate

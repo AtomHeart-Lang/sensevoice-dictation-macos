@@ -28,7 +28,7 @@ SenseVoice Dictation 是一个基于 [SenseVoice](https://github.com/FunAudioLLM
 ## 环境要求
 
 - macOS 11+
-- Python 3.11+
+- Python 3.11+（若缺失，安装脚本会在检测到 Homebrew 时自动安装）
 - Xcode Command Line Tools（用于构建启动器，需要 `clang`）
 
 可选：
@@ -46,6 +46,7 @@ SenseVoice Dictation 是一个基于 [SenseVoice](https://github.com/FunAudioLLM
 3. 若不存在则从 `config.example.toml` 生成 `config.toml`
 4. 预下载 SenseVoice + VAD 模型
 5. 创建 `~/Applications` 启动器和桌面符号链接
+6. 若缺少 Python 3.11+，并且系统有 Homebrew，则自动安装 Python
 
 安装参数：
 - `--no-model`
