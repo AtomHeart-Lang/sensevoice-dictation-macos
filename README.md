@@ -175,6 +175,11 @@ Then restart the menubar app.
 4. If key capture succeeds, the recognized hotkey is pre-filled for confirmation/editing.
 5. If capture fails, you can retry capture or switch to manual input.
 
+Hotkey/mouse trigger settings are persisted at:
+- `~/Library/Application Support/SenseVoiceDictation/ui_settings.json`
+
+This file survives app restarts and macOS reboots.
+
 ### Set Mouse Button
 
 1. Click `Set Mouse Button`.

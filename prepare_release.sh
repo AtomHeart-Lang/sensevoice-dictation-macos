@@ -9,7 +9,7 @@ find . -name "*.pyc" -delete
 rm -f .DS_Store assets/.DS_Store
 rm -f menubar_debug.log menubar_runtime.log menubar.out.log menubar.err.log
 rm -f menubar_app.lock
-rm -f config.toml ui_settings.json
+# Keep local runtime configs; release zip already excludes them.
 
 ZIP_NAME="sensevoice-dictation-macos-release.zip"
 rm -f "$ZIP_NAME"

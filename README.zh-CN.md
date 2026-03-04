@@ -183,6 +183,11 @@ remove_emoji = true
 4. 识别成功后，会自动回填到输入框，可直接保存或手动修改。
 5. 识别失败时，可选择重试识别，或切换为手动输入。
 
+键盘/鼠标触发设置持久化路径：
+- `~/Library/Application Support/SenseVoiceDictation/ui_settings.json`
+
+该文件在重启应用和重启 macOS 后都会保留。
+
 ## 脚本说明
 
 ### 核心脚本

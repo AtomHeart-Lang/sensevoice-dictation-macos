@@ -50,8 +50,10 @@ except ModuleNotFoundError as exc:
 
 
 APP_DIR = Path(__file__).resolve().parent
+APP_SUPPORT_DIR = Path.home() / "Library/Application Support/SenseVoiceDictation"
 CONFIG_PATH = APP_DIR / "config.toml"
-UI_SETTINGS_PATH = APP_DIR / "ui_settings.json"
+LEGACY_UI_SETTINGS_PATH = APP_DIR / "ui_settings.json"
+UI_SETTINGS_PATH = APP_SUPPORT_DIR / "ui_settings.json"
 LOG_PATH = APP_DIR / "menubar_debug.log"
 LOCK_PATH = APP_DIR / "menubar_app.lock"
 MODEL_NAME = "iic/SenseVoiceSmall"
@@ -679,12 +681,39 @@ def ui_edit_model_config(current: CoreConfig) -> Optional[CoreConfig]:
 
 
 def load_ui_settings() -> UISettings:
+    APP_SUPPORT_DIR.mkdir(parents=True, exist_ok=True)
+    if not UI_SETTINGS_PATH.exists() and LEGACY_UI_SETTINGS_PATH.exists():
+        try:
+            shutil.copy2(LEGACY_UI_SETTINGS_PATH, UI_SETTINGS_PATH)
+            logging.info(
+                "migrated ui settings from legacy path: %s -> %s",
+                LEGACY_UI_SETTINGS_PATH,
+                UI_SETTINGS_PATH,
+            )
+        except Exception as exc:
+            logging.warning("failed to migrate legacy ui settings: %s", exc)
+
     if not UI_SETTINGS_PATH.exists():
         settings = UISettings()
         save_ui_settings(settings)
         return settings
-    with open(UI_SETTINGS_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
+
+    try:
+        with open(UI_SETTINGS_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as exc:
+        logging.warning("load_ui_settings: invalid json, reset to defaults: %s", exc)
+        try:
+            bad = UI_SETTINGS_PATH.with_suffix(".json.broken")
+            if bad.exists():
+                bad.unlink()
+            UI_SETTINGS_PATH.replace(bad)
+        except Exception:
+            pass
+        settings = UISettings()
+        save_ui_settings(settings)
+        return settings
+
     is_legacy = "schema_version" not in data
     settings = UISettings(
         schema_version=int(data.get("schema_version", 2)),
@@ -715,8 +744,19 @@ def load_ui_settings() -> UISettings:
 
 
 def save_ui_settings(settings: UISettings) -> None:
-    with open(UI_SETTINGS_PATH, "w", encoding="utf-8") as f:
-        json.dump(asdict(settings), f, indent=2, ensure_ascii=False)
+    APP_SUPPORT_DIR.mkdir(parents=True, exist_ok=True)
+    payload = asdict(settings)
+    tmp_path = UI_SETTINGS_PATH.with_suffix(".json.tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
+    os.replace(tmp_path, UI_SETTINGS_PATH)
+
+    # Best-effort mirror for backward compatibility with older builds.
+    try:
+        with open(LEGACY_UI_SETTINGS_PATH, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
 
 
 def normalize_keyboard_hotkey(value: str) -> str:
@@ -897,6 +937,18 @@ def is_os_autostart_legacy() -> bool:
     except Exception:
         return False
     return str(AUTOSTART_RUNNER) not in content
+
+
+def is_os_autostart_runner_outdated() -> bool:
+    if not AUTOSTART_RUNNER.exists():
+        return False
+    try:
+        content = AUTOSTART_RUNNER.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return False
+    launcher_idx = content.find('if [[ -d "$LAUNCHER_APP" ]]; then')
+    script_idx = content.find('if [[ -x "$START_SCRIPT" ]]; then')
+    return launcher_idx != -1 and script_idx != -1 and launcher_idx < script_idx
 
 
 def set_os_autostart_enabled(enable: bool) -> None:
@@ -2036,7 +2088,9 @@ class SenseVoiceMenuBarApp(rumps.App):
         self.launch_login_item.state = 1 if is_os_autostart_enabled() else 0
 
     def _migrate_autostart_if_needed(self) -> None:
-        if not is_os_autostart_enabled() or not is_os_autostart_legacy():
+        if not is_os_autostart_enabled():
+            return
+        if not is_os_autostart_legacy() and not is_os_autostart_runner_outdated():
             return
         try:
             set_os_autostart_enabled(True)
