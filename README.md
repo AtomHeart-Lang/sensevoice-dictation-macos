@@ -1,10 +1,16 @@
 # SenseVoice Dictation for macOS
 
-SenseVoice Dictation is a macOS menubar app for push-to-talk dictation:
+SenseVoice Dictation is a macOS menubar app for push-to-talk dictation, built on [SenseVoice](https://github.com/FunAudioLLM/SenseVoice):
 - press the trigger once to start recording
 - press again to stop
 - transcribe with SenseVoice
 - auto-paste into the active text box
+
+Compared with built-in dictation or many generic tools, this app focuses on:
+- Local inference on your Mac (lower latency and no mandatory cloud round-trip)
+- Newer open model foundation (SenseVoice) with practical updates via `Update Model`
+- Strong mixed Chinese/English recognition quality in real typing workflows
+- End-to-end automation for global hotkey trigger and auto-paste into any text field
 
 ## Features
 
@@ -210,6 +216,7 @@ This file survives app restarts and macOS reboots.
 - SenseVoice model cache
 - `.venv`
 - local logs/locks/runtime config
+- `~/Library/Application Support/SenseVoiceDictation/ui_settings.json` and related config residues
 - launcher apps in Applications/Desktop
 - TCC entries for known app identifiers (best effort reset)
 

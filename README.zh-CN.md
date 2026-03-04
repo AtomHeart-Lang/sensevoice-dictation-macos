@@ -1,10 +1,16 @@
 # SenseVoice Dictation for macOS（中文说明）
 
-SenseVoice Dictation 是一个 macOS 菜单栏语音输入工具：
+SenseVoice Dictation 是一个基于 [SenseVoice](https://github.com/FunAudioLLM/SenseVoice) 的 macOS 菜单栏语音输入工具：
 - 按一次触发键开始录音
 - 再按一次停止录音
 - 使用 SenseVoice 转写
 - 自动粘贴到当前输入框
+
+相较于系统自带语音识别或常见通用工具，本应用重点优势是：
+- 本地推理（无需依赖云端往返），延迟更低、响应更快
+- 使用较新的开源语音模型底座（SenseVoice），并可通过 `Update Model` 持续更新
+- 在中英混合输入场景下，实测识别质量更适合高频文本输入
+- 全局热键一键录音/停止并自动粘贴到任意输入框，流程更高效
 
 ## 功能特性
 
@@ -210,6 +216,7 @@ remove_emoji = true
 - SenseVoice 模型缓存
 - `.venv`
 - 本地日志/锁文件/运行配置
+- `~/Library/Application Support/SenseVoiceDictation/ui_settings.json` 及相关配置残留
 - Applications/桌面启动器
 - 已知应用标识的 TCC 权限项（尽力重置）
 

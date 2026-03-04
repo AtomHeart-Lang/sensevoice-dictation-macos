@@ -6,6 +6,9 @@ LAUNCH_LABEL="com.lee.sensevoice.menubar"
 LAUNCH_DOMAIN="gui/$(id -u)"
 AUTOSTART_DIR="$HOME/Library/Application Support/SenseVoiceDictation"
 AUTOSTART_LOG_DIR="$HOME/Library/Logs/SenseVoiceDictation"
+APP_SUPPORT_UI_SETTINGS="$AUTOSTART_DIR/ui_settings.json"
+APP_SUPPORT_UI_SETTINGS_TMP="$AUTOSTART_DIR/ui_settings.json.tmp"
+APP_SUPPORT_UI_SETTINGS_BROKEN="$AUTOSTART_DIR/ui_settings.json.broken"
 DELETE_DIR=0
 for arg in "$@"; do
   case "$arg" in
@@ -70,8 +73,9 @@ rm -rf "$APP_DIR/.venv" "$APP_DIR/__pycache__"
 rm -f "$APP_DIR"/*.log
 rm -f "$APP_DIR/menubar.out.log" "$APP_DIR/menubar.err.log"
 rm -f "$APP_DIR"/*.lock
-rm -f "$APP_DIR/ui_settings.json"
+rm -f "$APP_DIR/ui_settings.json" "$APP_DIR/ui_settings.json.tmp" "$APP_DIR/ui_settings.json.broken"
 rm -f "$APP_DIR/config.toml"
+rm -f "$APP_SUPPORT_UI_SETTINGS" "$APP_SUPPORT_UI_SETTINGS_TMP" "$APP_SUPPORT_UI_SETTINGS_BROKEN"
 rm -rf "$AUTOSTART_DIR" "$AUTOSTART_LOG_DIR"
 rm -f /tmp/sensevoice_menubar.log /tmp/sensevoice_menubar_debug.log
 
