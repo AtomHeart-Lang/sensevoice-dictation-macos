@@ -494,9 +494,12 @@ def ui_hotkey_settings_action(
     alert.setInformativeText_("")
     icon = _app_icon_image(rounded=True)
     if icon is not None:
-        alert.setIcon_(icon)
+        icon_for_alert = icon.copy()
+        if icon_for_alert is not None:
+            icon_for_alert.setSize_(NSMakeSize(56.0, 56.0))
+            alert.setIcon_(icon_for_alert)
 
-    panel_w = 308
+    panel_w = 258
     panel_h = 116
     panel = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, panel_w, panel_h))
 
@@ -505,16 +508,17 @@ def ui_hotkey_settings_action(
     mode_label.setBezeled_(False)
     mode_label.setDrawsBackground_(False)
     mode_label.setSelectable_(False)
+    mode_label.setAlignment_(NSTextAlignmentCenter)
     mode_label.setStringValue_(tr("hotkey_settings_mode_label"))
     panel.addSubview_(mode_label)
 
-    radio_keyboard = NSButton.alloc().initWithFrame_(NSMakeRect(16, 68, 120, 20))
+    radio_keyboard = NSButton.alloc().initWithFrame_(NSMakeRect(26, 68, 88, 20))
     radio_keyboard.setButtonType_(NSRadioButton)
     radio_keyboard.setTitle_(tr("mode_keyboard"))
     radio_keyboard.setState_(NSControlStateValueOn if mode_value == "keyboard" else 0)
     panel.addSubview_(radio_keyboard)
 
-    radio_mouse = NSButton.alloc().initWithFrame_(NSMakeRect(166, 68, 120, 20))
+    radio_mouse = NSButton.alloc().initWithFrame_(NSMakeRect(144, 68, 88, 20))
     radio_mouse.setButtonType_(NSRadioButton)
     radio_mouse.setTitle_(tr("mode_mouse"))
     radio_mouse.setState_(NSControlStateValueOn if mode_value == "mouse" else 0)
@@ -525,6 +529,7 @@ def ui_hotkey_settings_action(
     keyboard_line.setBezeled_(False)
     keyboard_line.setDrawsBackground_(False)
     keyboard_line.setSelectable_(False)
+    keyboard_line.setAlignment_(NSTextAlignmentCenter)
     keyboard_line.setStringValue_(tr("hotkey_settings_keyboard_line", value=hotkey))
     panel.addSubview_(keyboard_line)
 
@@ -533,6 +538,7 @@ def ui_hotkey_settings_action(
     mouse_line.setBezeled_(False)
     mouse_line.setDrawsBackground_(False)
     mouse_line.setSelectable_(False)
+    mouse_line.setAlignment_(NSTextAlignmentCenter)
     mouse_line.setStringValue_(tr("hotkey_settings_mouse_line", value=mouse_value))
     panel.addSubview_(mouse_line)
 
