@@ -151,10 +151,7 @@ batch_size_s = 0
 ## 菜单项
 
 - `Toggle Dictation`
-- `Use Keyboard Trigger`
-- `Use Mouse Trigger`
-- `Set Keyboard Hotkey`
-- `Set Mouse Button`
+- `Hotkey Settings`
 - `Model Config`
 - `Update Model`
 - `Enable Dictation On App Start`
@@ -164,10 +161,7 @@ batch_size_s = 0
 ### 菜单中英文名称对照
 
 - `Toggle Dictation` / `开关语音输入`
-- `Use Keyboard Trigger` / `使用键盘触发`
-- `Use Mouse Trigger` / `使用鼠标触发`
-- `Set Keyboard Hotkey` / `设置键盘快捷键`
-- `Set Mouse Button` / `设置鼠标按键`
+- `Hotkey Settings` / `快捷键设置`
 - `Model Config` / `模型参数设置`
 - `Update Model` / `更新模型`
 - `Enable Dictation On App Start` / `应用启动时自动开启听写`
@@ -176,21 +170,13 @@ batch_size_s = 0
 
 ## 触发键设置流程
 
-### Set Keyboard Hotkey（键盘触发）
-
-1. 点击 `Set Keyboard Hotkey`。
-2. 选择 `开始识别` 或 `手动输入`。
-3. 若选择识别，程序会监听 8 秒，并弹出通知提醒你按下目标组合键。
-4. 识别成功后，会自动回填到输入框，可直接保存或手动修改。
-5. 识别失败时，可选择重试识别，或切换为手动输入。
-
-### Set Mouse Button（鼠标触发）
-
-1. 点击 `Set Mouse Button`。
-2. 选择 `开始识别` 或 `手动输入`。
-3. 若选择识别，程序会监听鼠标按钮事件（左键/右键会忽略）。
-4. 识别成功后，会自动回填到输入框，可直接保存或手动修改。
-5. 识别失败时，可选择重试识别，或切换为手动输入。
+1. 点击 `Hotkey Settings`（系统中文下显示为“快捷键设置”）。
+2. 窗口会显示当前触发模式、当前键盘快捷键、当前鼠标按键。
+3. 点击 `Set Keyboard Hotkey` 或 `Set Mouse Button`：
+   - 选择 `开始识别` 自动捕获；
+   - 或选择 `手动输入` 直接输入按键字符。
+4. 设置完成后，点击 `Use Keyboard Trigger` 或 `Use Mouse Trigger` 切换当前生效的触发方式。
+5. 点击 `Done` 关闭窗口。
 
 键盘/鼠标触发设置持久化路径：
 - `~/Library/Application Support/SenseVoiceDictation/ui_settings.json`
@@ -284,7 +270,7 @@ batch_size_s = 0
 重要说明：
 - `left` 和 `right` 已禁用，避免和日常点击操作冲突。
 - 鼠标按键编号依赖设备本身，`buttonN` 表示 macOS 上报的原始按键编号，不同鼠标可能不同。
-- 推荐流程：使用 `Set Mouse Button` 后直接点击目标鼠标键，让程序自动识别并回填再保存。
+- 推荐流程：打开 `Hotkey Settings` -> `Set Mouse Button`，直接点击目标鼠标键自动识别并回填后保存。
 - 仍保留手动输入，支持 `middle`、`x1`、`x2`、`buttonN`（`N >= 2`，且不含 `0/1`）。
 - 对 Logitech MX 系列：如果侧键在 Logi Options+ 中被配置为手势或快捷键，系统可能不会上报为鼠标按钮事件。请先改为 `Generic Button`，或改用键盘触发模式。
 

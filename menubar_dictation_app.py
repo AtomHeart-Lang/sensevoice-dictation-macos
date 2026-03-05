@@ -161,11 +161,13 @@ I18N = {
     "save": {"zh": "保存", "en": "Save"},
     "cancel": {"zh": "取消", "en": "Cancel"},
     "manual": {"zh": "手动", "en": "Manual"},
+    "done": {"zh": "完成", "en": "Done"},
     "menu_toggle": {"zh": "开关语音输入", "en": "Toggle Dictation"},
     "menu_use_keyboard": {"zh": "使用键盘触发", "en": "Use Keyboard Trigger"},
     "menu_use_mouse": {"zh": "使用鼠标触发", "en": "Use Mouse Trigger"},
     "menu_set_hotkey": {"zh": "设置键盘快捷键", "en": "Set Keyboard Hotkey"},
     "menu_set_mouse": {"zh": "设置鼠标按键", "en": "Set Mouse Button"},
+    "menu_hotkey_settings": {"zh": "快捷键设置", "en": "Hotkey Settings"},
     "menu_model_config": {"zh": "模型参数设置", "en": "Model Config"},
     "menu_update_model": {"zh": "更新模型", "en": "Update Model"},
     "menu_auto_on": {"zh": "应用启动时自动开启听写", "en": "Enable Dictation On App Start"},
@@ -270,13 +272,21 @@ I18N = {
     "capture_timeout_hotkey": {"zh": "8 秒内未识别到快捷键。", "en": "No hotkey captured within 8 seconds."},
     "capture_timeout_mouse": {"zh": "未识别到可用鼠标按键（左键/右键会被忽略）。", "en": "No usable mouse button captured (left/right are ignored)."},
     "retry_or_manual": {"zh": "你可以重试识别，或手动输入。", "en": "You can retry capture or switch to manual input."},
+    "hotkey_settings_summary": {
+        "zh": "当前触发方式：{mode}\n键盘快捷键：{hotkey}\n鼠标按键：{mouse}\n\n建议：先设置按键，再切换触发方式。",
+        "en": "Current trigger mode: {mode}\nKeyboard hotkey: {hotkey}\nMouse button: {mouse}\n\nTip: set keys first, then choose trigger mode.",
+    },
+    "hotkey_settings_btn_use_keyboard": {"zh": "启用键盘触发", "en": "Use Keyboard Trigger"},
+    "hotkey_settings_btn_use_mouse": {"zh": "启用鼠标触发", "en": "Use Mouse Trigger"},
+    "hotkey_settings_btn_set_keyboard": {"zh": "设置键盘快捷键", "en": "Set Keyboard Hotkey"},
+    "hotkey_settings_btn_set_mouse": {"zh": "设置鼠标按键", "en": "Set Mouse Button"},
     "mouse_invalid": {
         "zh": "鼠标按键格式无效。支持 middle、x1、x2、buttonN（N>=2，且不含 0/1）。",
         "en": "Invalid mouse button format. Supported: middle, x1, x2, buttonN (N>=2; excluding 0/1).",
     },
     "mouse_keyboard_mapped_hint": {
-        "zh": "未检测到可用鼠标按钮，但检测到按键组合：{value}\n这通常表示鼠标驱动已把侧键映射为键盘快捷键。\n你可以：\n1) 在 Logi Options+ 把该按键改为 Generic Button；或\n2) 直接用“设置键盘快捷键”设置这个组合。",
-        "en": "No usable mouse button was captured, but keyboard combo detected: {value}\nThis usually means your mouse driver mapped side buttons to keyboard shortcuts.\nYou can:\n1) Set that button to Generic Button in Logi Options+; or\n2) Configure this combo via Set Keyboard Hotkey.",
+        "zh": "未检测到可用鼠标按钮，但检测到按键组合：{value}\n这通常表示鼠标驱动已把侧键映射为键盘快捷键。\n你可以：\n1) 在 Logi Options+ 把该按键改为 Generic Button；或\n2) 在“快捷键设置”里设置该键盘组合。",
+        "en": "No usable mouse button was captured, but keyboard combo detected: {value}\nThis usually means your mouse driver mapped side buttons to keyboard shortcuts.\nYou can:\n1) Set that button to Generic Button in Logi Options+; or\n2) Configure this combo in Hotkey Settings.",
     },
     "no_key_captured": {"zh": "未捕获到快捷键。", "en": "No key captured."},
     "hotkey_saved": {"zh": "已设置快捷键: {value}", "en": "Keyboard hotkey saved: {value}"},
@@ -455,6 +465,51 @@ def ui_choice_native(
     if resp == NSAlertFirstButtonReturn + 1:
         return "secondary"
     return "cancel"
+
+
+def ui_hotkey_settings_action(settings: "UISettings") -> str:
+    app = NSApplication.sharedApplication()
+    app.activateIgnoringOtherApps_(True)
+    mode = tr("mode_mouse") if settings.trigger_mode == "mouse" else tr("mode_keyboard")
+    hotkey = normalize_keyboard_hotkey(settings.keyboard_hotkey)
+    mouse_value = normalize_mouse_button(settings.mouse_button) or settings.mouse_button
+    alert = NSAlert.alloc().init()
+    alert.setMessageText_(tr("menu_hotkey_settings"))
+    alert.setInformativeText_(
+        tr(
+            "hotkey_settings_summary",
+            mode=mode,
+            hotkey=hotkey,
+            mouse=mouse_value,
+        )
+    )
+    icon = _app_icon_image(rounded=True)
+    if icon is not None:
+        alert.setIcon_(icon)
+    alert.addButtonWithTitle_(tr("hotkey_settings_btn_set_keyboard"))
+    alert.addButtonWithTitle_(tr("hotkey_settings_btn_set_mouse"))
+    alert.addButtonWithTitle_(tr("hotkey_settings_btn_use_keyboard"))
+    alert.addButtonWithTitle_(tr("hotkey_settings_btn_use_mouse"))
+    alert.addButtonWithTitle_(tr("done"))
+    # Make "Done" the default (blue) button instead of the first action button.
+    try:
+        buttons = list(alert.buttons())
+        if len(buttons) >= 5:
+            for idx in range(4):
+                buttons[idx].setKeyEquivalent_("")
+            buttons[4].setKeyEquivalent_("\r")
+    except Exception:
+        pass
+    resp = alert.runModal()
+    if resp == NSAlertFirstButtonReturn:
+        return "set_keyboard"
+    if resp == NSAlertFirstButtonReturn + 1:
+        return "set_mouse"
+    if resp == NSAlertFirstButtonReturn + 2:
+        return "use_keyboard"
+    if resp == NSAlertFirstButtonReturn + 3:
+        return "use_mouse"
+    return "done"
 
 
 def run_with_ui_responsiveness(task_name: str, fn: Callable[[], object]):
@@ -2345,10 +2400,7 @@ class SenseVoiceMenuBarApp(rumps.App):
             self.trigger_item,
             None,
             "Toggle Dictation",
-            "Use Keyboard Trigger",
-            "Use Mouse Trigger",
-            "Set Keyboard Hotkey",
-            "Set Mouse Button",
+            "Hotkey Settings",
             "Model Config",
             "Update Model",
             self.auto_on_item,
@@ -2358,10 +2410,7 @@ class SenseVoiceMenuBarApp(rumps.App):
             "Quit App",
         ]
         self.toggle_item = self.menu["Toggle Dictation"]
-        self.use_keyboard_item = self.menu["Use Keyboard Trigger"]
-        self.use_mouse_item = self.menu["Use Mouse Trigger"]
-        self.set_hotkey_item = self.menu["Set Keyboard Hotkey"]
-        self.set_mouse_item = self.menu["Set Mouse Button"]
+        self.hotkey_settings_item = self.menu["Hotkey Settings"]
         self.model_config_item = self.menu["Model Config"]
         self.update_model_item = self.menu["Update Model"]
         self.quit_item = self.menu["Quit App"]
@@ -2456,10 +2505,7 @@ class SenseVoiceMenuBarApp(rumps.App):
         self.auto_on_item.title = tr("menu_auto_on")
         self.launch_login_item.title = tr("menu_launch_login")
         self.toggle_item.title = tr("menu_toggle")
-        self.use_keyboard_item.title = tr("menu_use_keyboard")
-        self.use_mouse_item.title = tr("menu_use_mouse")
-        self.set_hotkey_item.title = tr("menu_set_hotkey")
-        self.set_mouse_item.title = tr("menu_set_mouse")
+        self.hotkey_settings_item.title = tr("menu_hotkey_settings")
         self.model_config_item.title = tr("menu_model_config")
         self.update_model_item.title = tr("menu_update_model")
         self.quit_item.title = tr("menu_quit")
@@ -2516,23 +2562,13 @@ class SenseVoiceMenuBarApp(rumps.App):
         else:
             self.enable_dictation()
 
-    @rumps.clicked("Use Keyboard Trigger")
-    def on_use_keyboard(self, _):
-        logging.info("on_use_keyboard clicked")
-        self.ui_settings.trigger_mode = "keyboard"
+    def _set_trigger_mode(self, mode: str) -> None:
+        self.ui_settings.trigger_mode = mode
         save_ui_settings(self.ui_settings)
         self.refresh_ui_labels()
         self.restart_trigger()
 
-    @rumps.clicked("Use Mouse Trigger")
-    def on_use_mouse(self, _):
-        self.ui_settings.trigger_mode = "mouse"
-        save_ui_settings(self.ui_settings)
-        self.refresh_ui_labels()
-        self.restart_trigger()
-
-    @rumps.clicked("Set Keyboard Hotkey")
-    def on_set_hotkey(self, _):
+    def _set_keyboard_hotkey_flow(self) -> None:
         try:
             logging.info("on_set_hotkey: start")
             was_enabled = self.dictation_enabled
@@ -2558,8 +2594,7 @@ class SenseVoiceMenuBarApp(rumps.App):
             logging.exception("on_set_hotkey crashed: %s", exc)
             ui_alert_native(tr("hotkey_set_failed", error=exc), title=tr("menu_set_hotkey"))
 
-    @rumps.clicked("Set Mouse Button")
-    def on_set_mouse_button(self, _):
+    def _set_mouse_button_flow(self) -> None:
         try:
             logging.info("on_set_mouse_button: start")
             was_enabled = self.dictation_enabled
@@ -2584,6 +2619,25 @@ class SenseVoiceMenuBarApp(rumps.App):
         except Exception as exc:
             logging.exception("on_set_mouse_button crashed: %s", exc)
             ui_alert_native(tr("mouse_set_failed", error=exc), title=tr("menu_set_mouse"))
+
+    @rumps.clicked("Hotkey Settings")
+    def on_hotkey_settings(self, _):
+        while True:
+            action = ui_hotkey_settings_action(self.ui_settings)
+            if action == "done":
+                return
+            if action == "use_keyboard":
+                self._set_trigger_mode("keyboard")
+                continue
+            if action == "use_mouse":
+                self._set_trigger_mode("mouse")
+                continue
+            if action == "set_keyboard":
+                self._set_keyboard_hotkey_flow()
+                continue
+            if action == "set_mouse":
+                self._set_mouse_button_flow()
+                continue
 
     @rumps.clicked("Model Config")
     def on_model_config(self, _):

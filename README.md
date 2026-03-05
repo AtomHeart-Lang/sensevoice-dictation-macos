@@ -151,10 +151,7 @@ Then restart the menubar app.
 ## Menu Items
 
 - `Toggle Dictation`
-- `Use Keyboard Trigger`
-- `Use Mouse Trigger`
-- `Set Keyboard Hotkey`
-- `Set Mouse Button`
+- `Hotkey Settings`
 - `Model Config`
 - `Update Model`
 - `Enable Dictation On App Start`
@@ -164,10 +161,7 @@ Then restart the menubar app.
 ### Menu Name Mapping (EN/CN)
 
 - `Toggle Dictation` / `开关语音输入`
-- `Use Keyboard Trigger` / `使用键盘触发`
-- `Use Mouse Trigger` / `使用鼠标触发`
-- `Set Keyboard Hotkey` / `设置键盘快捷键`
-- `Set Mouse Button` / `设置鼠标按键`
+- `Hotkey Settings` / `快捷键设置`
 - `Model Config` / `模型参数设置`
 - `Update Model` / `更新模型`
 - `Enable Dictation On App Start` / `应用启动时自动开启听写`
@@ -176,26 +170,18 @@ Then restart the menubar app.
 
 ## Trigger Setup Flow
 
-### Set Keyboard Hotkey
-
-1. Click `Set Keyboard Hotkey`.
-2. Choose `Start Capture` or `Manual Input`.
-3. If capture is chosen, the app listens for 8 seconds and shows a notification prompt.
-4. If key capture succeeds, the recognized hotkey is pre-filled for confirmation/editing.
-5. If capture fails, you can retry capture or switch to manual input.
+1. Click `Hotkey Settings`.
+2. The dialog shows current trigger mode, current keyboard hotkey, and current mouse button.
+3. Click `Set Keyboard Hotkey` or `Set Mouse Button`:
+   - Choose `Start Capture` to auto-detect.
+   - Or choose `Manual Input` to enter token text directly.
+4. After setting keys, click `Use Keyboard Trigger` or `Use Mouse Trigger` to switch active trigger mode.
+5. Click `Done` to close.
 
 Hotkey/mouse trigger settings are persisted at:
 - `~/Library/Application Support/SenseVoiceDictation/ui_settings.json`
 
 This file survives app restarts and macOS reboots.
-
-### Set Mouse Button
-
-1. Click `Set Mouse Button`.
-2. Choose `Start Capture` or `Manual Input`.
-3. If capture is chosen, the app listens for mouse button events (left/right ignored).
-4. If capture succeeds, the recognized button token is pre-filled for confirmation/editing.
-5. If capture fails, you can retry capture or switch to manual input.
 
 ## Script Reference
 
@@ -284,7 +270,7 @@ Supported values:
 Important:
 - `left` and `right` are intentionally disabled to avoid conflicts with normal clicking.
 - Mouse button numbering is device-dependent. `buttonN` means the raw button number reported by macOS for your specific mouse.
-- Recommended workflow: use `Set Mouse Button` and click your target mouse key to auto-capture it, then save.
+- Recommended workflow: open `Hotkey Settings` -> `Set Mouse Button`, then click your target mouse key to auto-capture and save.
 - Manual input is still supported for `middle`, `x1`, `x2`, and `buttonN` (`N >= 2`, except `0/1`).
 - For Logitech MX series: if side buttons are configured as gestures/keystrokes in Logi Options+, they may not appear as mouse button events. Set them to `Generic Button` first, or use keyboard trigger mode.
 
