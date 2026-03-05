@@ -302,6 +302,10 @@ I18N = {
         "zh": "监听权限可能未生效。请从桌面或 Applications 双击 FunASR Dictation.app 启动，并在 系统设置 -> 隐私与安全性 -> Input Monitoring / Accessibility 中勾选对应条目后重启应用。",
         "en": "Input-monitoring permissions may not be effective. Launch from FunASR Dictation.app (Desktop/Applications), then enable its entries in System Settings -> Privacy & Security -> Input Monitoring / Accessibility, and restart.",
     },
+    "silent_audio_hint": {
+        "zh": "检测到录音为静音（音量全为 0）。请检查：\n1) 系统设置 -> 隐私与安全性 -> 麦克风，是否允许 FunASR Dictation / Python\n2) 系统设置 -> 声音 -> 输入，是否选中了正确麦克风\n3) 麦克风本身是否被静音或被其他软件占用",
+        "en": "Captured audio is fully silent (all zeros). Please check:\n1) System Settings -> Privacy & Security -> Microphone: allow FunASR Dictation / Python\n2) System Settings -> Sound -> Input: select the correct microphone\n3) The microphone is not muted or exclusively occupied by another app",
+    },
     "launch_login_update_failed": {"zh": "更新开机自动启动失败: {error}", "en": "Failed to update Launch At Login: {error}"},
 }
 
@@ -1676,9 +1680,15 @@ def choose_mouse_button_with_capture(current_value: str) -> Optional[str]:
 
 
 class DictationEngine:
-    def __init__(self, config: CoreConfig, status_cb: Callable[[str], None]):
+    def __init__(
+        self,
+        config: CoreConfig,
+        status_cb: Callable[[str], None],
+        alert_cb: Optional[Callable[[str], None]] = None,
+    ):
         self.config = config
         self.status_cb = status_cb
+        self.alert_cb = alert_cb
         self.model = None
         self.model_loading = False
         self.stream = None
@@ -1687,9 +1697,19 @@ class DictationEngine:
         self.recording = False
         self.processing = False
         self.shutdown_flag = False
+        self.silent_audio_alerted = False
+        self.cached_input_device: Optional[int] = None
 
     def _set_status(self, status: str) -> None:
         self.status_cb(status)
+
+    def _emit_alert(self, key: str) -> None:
+        if self.alert_cb is None:
+            return
+        try:
+            self.alert_cb(tr(key))
+        except Exception as exc:
+            logging.warning("emit alert failed key=%s err=%s", key, exc)
 
     def _beep(self, kind: str = "default") -> None:
         if not self.config.enable_beep:
@@ -1773,6 +1793,93 @@ class DictationEngine:
         self.warmup_async()
         return False
 
+    @staticmethod
+    def _is_virtual_input_name(name: str) -> bool:
+        n = name.lower()
+        markers = (
+            "blackhole",
+            "loopback",
+            "soundflower",
+            "aggregate",
+            "display audio",
+            "airplay",
+            "hdmi",
+            "vb-audio",
+        )
+        return any(m in n for m in markers)
+
+    @staticmethod
+    def _is_mic_like_name(name: str) -> bool:
+        n = name.lower()
+        markers = (
+            "microphone",
+            "mic",
+            "built-in",
+            "built in",
+            "麦克风",
+            "内建",
+        )
+        return any(m in n for m in markers)
+
+    def _resolve_input_device(self) -> Optional[int]:
+        try:
+            devs = sd.query_devices()
+        except Exception as exc:
+            logging.warning("query_devices failed: %s", exc)
+            return None
+
+        candidates = []
+        for idx, dev in enumerate(devs):
+            try:
+                in_ch = int(dev.get("max_input_channels", 0))
+            except Exception:
+                in_ch = 0
+            if in_ch <= 0:
+                continue
+            candidates.append((idx, dev))
+        if not candidates:
+            logging.warning("no input-capable device found by sounddevice")
+            return None
+
+        default_in = None
+        try:
+            default_dev = sd.default.device
+            if isinstance(default_dev, (list, tuple)) and len(default_dev) >= 1:
+                default_in = int(default_dev[0])
+            elif isinstance(default_dev, int):
+                default_in = int(default_dev)
+        except Exception:
+            default_in = None
+
+        def score(entry):
+            idx, dev = entry
+            name = str(dev.get("name", ""))
+            score_val = 0
+            if default_in is not None and idx == default_in:
+                score_val += 30
+            if self._is_mic_like_name(name):
+                score_val += 50
+            if self._is_virtual_input_name(name):
+                score_val -= 80
+            score_val += min(int(dev.get("max_input_channels", 0)), 2) * 5
+            return score_val
+
+        ranked = sorted(candidates, key=score, reverse=True)
+        picked_idx, picked_dev = ranked[0]
+        summary = []
+        for idx, dev in ranked[:5]:
+            summary.append(
+                f"{idx}:{dev.get('name','?')} in={int(dev.get('max_input_channels',0))} score={score((idx, dev))}"
+            )
+        logging.info(
+            "audio_input choose=%s name=%s default_in=%s candidates=%s",
+            picked_idx,
+            picked_dev.get("name", "?"),
+            default_in,
+            " | ".join(summary),
+        )
+        return int(picked_idx)
+
     def _audio_callback(self, indata, frames, time_info, status):
         if status:
             pass
@@ -1853,14 +1960,24 @@ class DictationEngine:
         self._set_status("RECORDING")
 
         try:
-            self.stream = sd.InputStream(
+            device_idx = self.cached_input_device
+            if device_idx is None:
+                device_idx = self._resolve_input_device()
+                self.cached_input_device = device_idx
+
+            stream_kwargs = dict(
                 samplerate=self.config.sample_rate,
                 channels=self.config.channels,
                 dtype="float32",
                 callback=self._audio_callback,
             )
+            if device_idx is not None:
+                stream_kwargs["device"] = device_idx
+            self.stream = sd.InputStream(**stream_kwargs)
             self.stream.start()
-        except Exception:
+        except Exception as exc:
+            logging.exception("start_recording stream open failed: %s", exc)
+            self.cached_input_device = None
             with self.lock:
                 self.recording = False
             self._set_status("ERROR")
@@ -1928,6 +2045,12 @@ class DictationEngine:
                 trim_peak,
                 trim_rms,
             )
+            if raw_peak <= 1e-7 and raw_rms <= 1e-8:
+                logging.warning("captured audio is fully silent; skip ASR this turn")
+                if not self.silent_audio_alerted:
+                    self.silent_audio_alerted = True
+                    self._emit_alert("silent_audio_hint")
+                return
             lang = resolve_funasr_language(self.config.language)
             gen_kwargs = {
                 "input": pcm,
@@ -2035,6 +2158,7 @@ class DictationEngine:
             self.model = None
             self.processing = False
             self.model_loading = False
+            self.cached_input_device = None
 
 
 class TriggerController:
@@ -2300,7 +2424,11 @@ class SenseVoiceMenuBarApp(rumps.App):
         self.pending_startup_enable = False
         self.permission_hint_shown = False
 
-        self.engine = DictationEngine(self.core_config, self.on_engine_status)
+        self.engine = DictationEngine(
+            self.core_config,
+            self.on_engine_status,
+            self._queue_alert,
+        )
         self.trigger = TriggerController(self.on_trigger)
 
         self.status_item = rumps.MenuItem("Status: OFF")
@@ -2407,7 +2535,11 @@ class SenseVoiceMenuBarApp(rumps.App):
         self.dictation_enabled = False
         self.trigger.stop()
         self.engine.stop_all()
-        self.engine = DictationEngine(self.core_config, self.on_engine_status)
+        self.engine = DictationEngine(
+            self.core_config,
+            self.on_engine_status,
+            self._queue_alert,
+        )
         self.on_engine_status("OFF")
 
     def refresh_ui_labels(self) -> None:
@@ -2601,7 +2733,11 @@ class SenseVoiceMenuBarApp(rumps.App):
                     removed.append(str(path))
             logging.info("update_model: removed_cache=%s", removed)
 
-            self.engine = DictationEngine(self.core_config, self.on_engine_status)
+            self.engine = DictationEngine(
+                self.core_config,
+                self.on_engine_status,
+                self._queue_alert,
+            )
             self.engine.warmup_async()
 
             wait_s = 0.0

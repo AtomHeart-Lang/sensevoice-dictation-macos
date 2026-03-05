@@ -301,6 +301,7 @@ batch_size_s = 0
 - 桌面快捷方式指向 `~/Applications` 同一个应用，避免 TCC 列表重复。
 - 如果首次安装后 `open -a "FunASR Dictation"` 提示找不到应用，请先执行：
   - `open "$HOME/Applications/FunASR Dictation.app"`
+- 如果热键能触发但始终没有识别文本，请优先检查麦克风权限和系统输入设备（程序会在检测到全静音录音时给出提示）。
 - 如果权限列表里仍残留旧的 `SenseVoice Dictation` 条目，可执行一次旧权限重置：
   - `tccutil reset Accessibility com.lee.sensevoice.dictation.launcher`
   - `tccutil reset ListenEvent com.lee.sensevoice.dictation.launcher`

@@ -301,6 +301,7 @@ Notes:
 - Desktop shortcut points to the same app in `~/Applications` to avoid duplicate TCC rows.
 - If `open -a "FunASR Dictation"` cannot find the app on first install, run:
   - `open "$HOME/Applications/FunASR Dictation.app"`
+- If hotkey works but recognition is always empty, check Microphone permission and Sound Input device (the app now warns when captured audio is all-zero).
 - If you still see old `SenseVoice Dictation` rows in Privacy settings, reset old entries once:
   - `tccutil reset Accessibility com.lee.sensevoice.dictation.launcher`
   - `tccutil reset ListenEvent com.lee.sensevoice.dictation.launcher`
