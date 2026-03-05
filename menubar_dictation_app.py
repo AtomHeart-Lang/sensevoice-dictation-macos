@@ -36,6 +36,7 @@ from AppKit import (
     NSScrollView,
     NSSwitchButton,
     NSTextField,
+    NSTextAlignmentCenter,
     NSTextView,
     NSView,
     NSWindow,
@@ -156,7 +157,7 @@ def _detect_app_language() -> str:
 APP_LANG = _detect_app_language()
 
 I18N = {
-    "app_name": {"zh": "FunASR 听写", "en": "FunASR Dictation"},
+    "app_name": {"zh": "FunASR Dictation", "en": "FunASR Dictation"},
     "ok": {"zh": "确定", "en": "OK"},
     "save": {"zh": "保存", "en": "Save"},
     "cancel": {"zh": "取消", "en": "Cancel"},
@@ -474,18 +475,49 @@ def ui_hotkey_settings_action(settings: "UISettings") -> str:
     hotkey = normalize_keyboard_hotkey(settings.keyboard_hotkey)
     mouse_value = normalize_mouse_button(settings.mouse_button) or settings.mouse_button
     alert = NSAlert.alloc().init()
-    alert.setMessageText_(tr("menu_hotkey_settings"))
-    alert.setInformativeText_(
-        tr(
-            "hotkey_settings_summary",
-            mode=mode,
-            hotkey=hotkey,
-            mouse=mouse_value,
-        )
+    alert.setMessageText_("")
+    alert.setInformativeText_("")
+
+    summary = tr(
+        "hotkey_settings_summary",
+        mode=mode,
+        hotkey=hotkey,
+        mouse=mouse_value,
     )
+    panel = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 450, 272))
+
     icon = _app_icon_image(rounded=True)
     if icon is not None:
-        alert.setIcon_(icon)
+        icon_size = 96
+        icon_x = (450 - icon_size) / 2.0
+        icon_view = NSImageView.alloc().initWithFrame_(NSMakeRect(icon_x, 176, icon_size, icon_size))
+        icon_view.setImage_(icon)
+        panel.addSubview_(icon_view)
+
+    title = NSTextField.alloc().initWithFrame_(NSMakeRect(10, 132, 430, 32))
+    title.setEditable_(False)
+    title.setBezeled_(False)
+    title.setDrawsBackground_(False)
+    title.setSelectable_(False)
+    title.setAlignment_(NSTextAlignmentCenter)
+    title.setStringValue_(tr("menu_hotkey_settings"))
+    panel.addSubview_(title)
+
+    y = 102
+    for line in summary.splitlines():
+        if not line.strip():
+            y -= 12
+            continue
+        text = NSTextField.alloc().initWithFrame_(NSMakeRect(20, y, 410, 26))
+        text.setEditable_(False)
+        text.setBezeled_(False)
+        text.setDrawsBackground_(False)
+        text.setSelectable_(False)
+        text.setStringValue_(line)
+        panel.addSubview_(text)
+        y -= 28
+
+    alert.setAccessoryView_(panel)
     alert.addButtonWithTitle_(tr("hotkey_settings_btn_set_keyboard"))
     alert.addButtonWithTitle_(tr("hotkey_settings_btn_set_mouse"))
     alert.addButtonWithTitle_(tr("hotkey_settings_btn_use_keyboard"))
