@@ -20,12 +20,13 @@ set -uo pipefail
 # RUNNER_VERSION=2
 APP_DIR="__APP_DIR__"
 START_SCRIPT="$APP_DIR/start_app.sh"
-LAUNCHER_APP="$HOME/Applications/SenseVoice Dictation.app"
+LAUNCHER_APP="$HOME/Applications/FunASR Dictation.app"
+LEGACY_LAUNCHER_APP="$HOME/Applications/SenseVoice Dictation.app"
 RUNTIME_LOG="$HOME/Library/Logs/SenseVoiceDictation/menubar_runtime.log"
 WAIT_LOG="$HOME/Library/Logs/SenseVoiceDictation/autostart_wait.log"
 
 wait_round=0
-while [[ ! -d "$APP_DIR" || ( ! -x "$START_SCRIPT" && ! -d "$LAUNCHER_APP" ) ]]; do
+while [[ ! -d "$APP_DIR" || ( ! -x "$START_SCRIPT" && ! -d "$LAUNCHER_APP" && ! -d "$LEGACY_LAUNCHER_APP" ) ]]; do
   wait_round=$((wait_round + 1))
   if (( wait_round % 15 == 0 )); then
     echo "[$(date '+%F %T')] waiting for app dir: $APP_DIR" >> "$WAIT_LOG"
@@ -44,6 +45,10 @@ if [[ -x "$START_SCRIPT" ]]; then
   fi
   start_exit=$?
   echo "[$(date '+%F %T')] start_app.sh failed with code $start_exit; fallback to launcher app" >> "$RUNTIME_LOG"
+fi
+
+if [[ ! -d "$LAUNCHER_APP" && -d "$LEGACY_LAUNCHER_APP" ]]; then
+  LAUNCHER_APP="$LEGACY_LAUNCHER_APP"
 fi
 
 if [[ -d "$LAUNCHER_APP" ]]; then

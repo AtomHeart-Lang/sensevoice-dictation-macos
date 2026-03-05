@@ -1,6 +1,6 @@
-# SenseVoice Dictation for macOS
+# FunASR Dictation for macOS
 
-SenseVoice Dictation is a macOS menubar app for push-to-talk dictation, now running on [Fun-ASR-Nano-2512](https://github.com/FunAudioLLM/Fun-ASR):
+FunASR Dictation is a macOS menubar app for push-to-talk dictation, running on [Fun-ASR-Nano-2512](https://github.com/FunAudioLLM/Fun-ASR):
 - press the trigger once to start recording
 - press again to stop
 - transcribe with Fun-ASR-Nano-2512

@@ -61,7 +61,8 @@ MODEL_NAME = "FunAudioLLM/Fun-ASR-Nano-2512"
 VAD_MODEL_NAME = "iic/speech_fsmn_vad_zh-cn-16k-common-pytorch"
 FUNASR_RUNTIME_DIR = APP_DIR / "funasr_nano_runtime"
 FUNASR_REMOTE_CODE_PATH = FUNASR_RUNTIME_DIR / "model.py"
-APP_ICON = str((APP_DIR / "assets" / "mic_menu_icon.png").resolve())
+MENU_ICON = str((APP_DIR / "assets" / "mic_menu_icon.png").resolve())
+APP_ICON = str((APP_DIR / "assets" / "app_launcher_icon.png").resolve())
 APP_BUILD = "2026-03-05-b14"
 LOCK_FD = None
 EVENT_TAP_LOCATION = Quartz.kCGSessionEventTap
@@ -151,7 +152,7 @@ def _detect_app_language() -> str:
 APP_LANG = _detect_app_language()
 
 I18N = {
-    "app_name": {"zh": "罗技语音", "en": "SenseVoice Dictation"},
+    "app_name": {"zh": "FunASR 听写", "en": "FunASR Dictation"},
     "ok": {"zh": "确定", "en": "OK"},
     "save": {"zh": "保存", "en": "Save"},
     "cancel": {"zh": "取消", "en": "Cancel"},
@@ -290,8 +291,8 @@ I18N = {
         "en": "Legacy launch-at-login config detected but migration failed. Please toggle Enable Launch At Login off and on once.",
     },
     "permission_event_tap_failed": {
-        "zh": "无法创建键盘监听（event tap）。这通常是启动器权限归属问题。\n请重新创建桌面启动器后再试：\n1) ./remove_launcher.sh\n2) ./create_launcher.sh\n3) 在系统设置中给 “SenseVoice Dictation.app” 重新勾选 Accessibility 和 Input Monitoring。\n当前 Python: {python}",
-        "en": "Failed to create keyboard event tap. This is usually a launcher permission attribution issue.\nPlease recreate the launcher and retry:\n1) ./remove_launcher.sh\n2) ./create_launcher.sh\n3) Re-enable Accessibility and Input Monitoring for \"SenseVoice Dictation.app\" in System Settings.\nCurrent Python: {python}",
+        "zh": "无法创建键盘监听（event tap）。这通常是启动器权限归属问题。\n请重新创建桌面启动器后再试：\n1) ./remove_launcher.sh\n2) ./create_launcher.sh\n3) 在系统设置中给 “FunASR Dictation.app” 重新勾选 Accessibility 和 Input Monitoring。\n当前 Python: {python}",
+        "en": "Failed to create keyboard event tap. This is usually a launcher permission attribution issue.\nPlease recreate the launcher and retry:\n1) ./remove_launcher.sh\n2) ./create_launcher.sh\n3) Re-enable Accessibility and Input Monitoring for \"FunASR Dictation.app\" in System Settings.\nCurrent Python: {python}",
     },
     "permission_hint": {
         "zh": "监听权限可能未生效。请在 系统设置 -> 隐私与安全性 -> Input Monitoring / Accessibility 中确认已勾选当前启动器，并重启应用。",
@@ -341,9 +342,10 @@ def _applescript_escape(text: str) -> str:
 
 
 def _app_icon_image() -> Optional[NSImage]:
-    if not Path(APP_ICON).exists():
+    icon_path = APP_ICON if Path(APP_ICON).exists() else MENU_ICON
+    if not Path(icon_path).exists():
         return None
-    icon = NSImage.alloc().initWithContentsOfFile_(APP_ICON)
+    icon = NSImage.alloc().initWithContentsOfFile_(icon_path)
     return icon if icon is not None else None
 
 
@@ -2200,7 +2202,7 @@ class SenseVoiceMenuBarApp(rumps.App):
     def __init__(self):
         super().__init__(
             "SV Off",
-            icon=APP_ICON if Path(APP_ICON).exists() else None,
+            icon=MENU_ICON if Path(MENU_ICON).exists() else None,
             template=True,
             quit_button=None,
         )

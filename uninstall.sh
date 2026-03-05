@@ -32,8 +32,10 @@ MODEL_DIRS=(
   "$HOME/.cache/modelscope/hub/models/iic/speech_fsmn_vad_zh-cn-16k-common-pytorch"
 )
 
-APP_BUNDLE="$HOME/Applications/SenseVoice Dictation.app"
-DESKTOP_APP="$HOME/Desktop/SenseVoice Dictation.app"
+APP_BUNDLE="$HOME/Applications/FunASR Dictation.app"
+DESKTOP_APP="$HOME/Desktop/FunASR Dictation.app"
+LEGACY_APP_BUNDLE="$HOME/Applications/SenseVoice Dictation.app"
+LEGACY_DESKTOP_APP="$HOME/Desktop/SenseVoice Dictation.app"
 TCC_IDS=(
   "com.lee.sensevoice.dictation.launcher"
   "com.lee.sensevoice.menubar"
@@ -60,6 +62,7 @@ pkill -f "[m]ain.py" >/dev/null 2>&1 || true
 
 echo "[Step] Remove launcher apps"
 rm -rf "$APP_BUNDLE" "$DESKTOP_APP"
+rm -rf "$LEGACY_APP_BUNDLE" "$LEGACY_DESKTOP_APP"
 
 echo "[Step] Remove model cache"
 for d in "${MODEL_DIRS[@]}"; do

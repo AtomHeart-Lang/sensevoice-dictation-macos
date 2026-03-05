@@ -2,20 +2,25 @@
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
-APP_BUNDLE="$HOME/Applications/SenseVoice Dictation.app"
-DESKTOP_APP="$HOME/Desktop/SenseVoice Dictation.app"
-ICON_PNG="$APP_DIR/assets/mic_menu_icon.png"
+APP_NAME="FunASR Dictation"
+LEGACY_APP_NAME="SenseVoice Dictation"
+APP_BUNDLE="$HOME/Applications/$APP_NAME.app"
+DESKTOP_APP="$HOME/Desktop/$APP_NAME.app"
+LEGACY_APP_BUNDLE="$HOME/Applications/$LEGACY_APP_NAME.app"
+LEGACY_DESKTOP_APP="$HOME/Desktop/$LEGACY_APP_NAME.app"
+APP_ICON_PNG="$APP_DIR/assets/app_launcher_icon.png"
+MENU_ICON_PNG="$APP_DIR/assets/mic_menu_icon.png"
 
 if ! command -v clang >/dev/null 2>&1; then
   echo "[ERROR] clang not found. Install Xcode Command Line Tools first: xcode-select --install"
   exit 1
 fi
 
-TMP_DIR="$(mktemp -d /tmp/sv-launcher.XXXXXX)"
+TMP_DIR="$(mktemp -d /tmp/funasr-launcher.XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 mkdir -p "$HOME/Applications"
-rm -rf "$APP_BUNDLE" "$DESKTOP_APP"
+rm -rf "$APP_BUNDLE" "$DESKTOP_APP" "$LEGACY_APP_BUNDLE" "$LEGACY_DESKTOP_APP"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 
 cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
@@ -24,9 +29,9 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
   <key>CFBundleName</key>
-  <string>SenseVoice Dictation</string>
+  <string>FunASR Dictation</string>
   <key>CFBundleDisplayName</key>
-  <string>SenseVoice Dictation</string>
+  <string>FunASR Dictation</string>
   <key>CFBundleIdentifier</key>
   <string>com.lee.sensevoice.dictation.launcher</string>
   <key>CFBundleVersion</key>
@@ -36,7 +41,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleExecutable</key>
-  <string>SenseVoiceLauncher</string>
+  <string>FunASRLauncher</string>
   <key>CFBundleIconFile</key>
   <string>app</string>
   <key>LSMinimumSystemVersion</key>
@@ -52,22 +57,27 @@ int main(void) {
     return system("cd '$APP_DIR' && ./launch_from_desktop.sh >/dev/null 2>&1");
 }
 SRC
-clang "$LAUNCH_SRC" -O2 -o "$APP_BUNDLE/Contents/MacOS/SenseVoiceLauncher"
+clang "$LAUNCH_SRC" -O2 -o "$APP_BUNDLE/Contents/MacOS/FunASRLauncher"
 
-if [[ -f "$ICON_PNG" ]]; then
+ICON_SRC="$APP_ICON_PNG"
+if [[ ! -f "$ICON_SRC" ]]; then
+  ICON_SRC="$MENU_ICON_PNG"
+fi
+
+if [[ -f "$ICON_SRC" ]]; then
   ICONSET_DIR="$TMP_DIR/mic.iconset"
   ICON_ICNS="$TMP_DIR/app.icns"
   mkdir -p "$ICONSET_DIR"
-  sips -z 16 16     "$ICON_PNG" --out "$ICONSET_DIR/icon_16x16.png" >/dev/null
-  sips -z 32 32     "$ICON_PNG" --out "$ICONSET_DIR/icon_16x16@2x.png" >/dev/null
-  sips -z 32 32     "$ICON_PNG" --out "$ICONSET_DIR/icon_32x32.png" >/dev/null
-  sips -z 64 64     "$ICON_PNG" --out "$ICONSET_DIR/icon_32x32@2x.png" >/dev/null
-  sips -z 128 128   "$ICON_PNG" --out "$ICONSET_DIR/icon_128x128.png" >/dev/null
-  sips -z 256 256   "$ICON_PNG" --out "$ICONSET_DIR/icon_128x128@2x.png" >/dev/null
-  sips -z 256 256   "$ICON_PNG" --out "$ICONSET_DIR/icon_256x256.png" >/dev/null
-  sips -z 512 512   "$ICON_PNG" --out "$ICONSET_DIR/icon_256x256@2x.png" >/dev/null
-  sips -z 512 512   "$ICON_PNG" --out "$ICONSET_DIR/icon_512x512.png" >/dev/null
-  sips -z 1024 1024 "$ICON_PNG" --out "$ICONSET_DIR/icon_512x512@2x.png" >/dev/null
+  sips -z 16 16     "$ICON_SRC" --out "$ICONSET_DIR/icon_16x16.png" >/dev/null
+  sips -z 32 32     "$ICON_SRC" --out "$ICONSET_DIR/icon_16x16@2x.png" >/dev/null
+  sips -z 32 32     "$ICON_SRC" --out "$ICONSET_DIR/icon_32x32.png" >/dev/null
+  sips -z 64 64     "$ICON_SRC" --out "$ICONSET_DIR/icon_32x32@2x.png" >/dev/null
+  sips -z 128 128   "$ICON_SRC" --out "$ICONSET_DIR/icon_128x128.png" >/dev/null
+  sips -z 256 256   "$ICON_SRC" --out "$ICONSET_DIR/icon_128x128@2x.png" >/dev/null
+  sips -z 256 256   "$ICON_SRC" --out "$ICONSET_DIR/icon_256x256.png" >/dev/null
+  sips -z 512 512   "$ICON_SRC" --out "$ICONSET_DIR/icon_256x256@2x.png" >/dev/null
+  sips -z 512 512   "$ICON_SRC" --out "$ICONSET_DIR/icon_512x512.png" >/dev/null
+  sips -z 1024 1024 "$ICON_SRC" --out "$ICONSET_DIR/icon_512x512@2x.png" >/dev/null
   iconutil -c icns "$ICONSET_DIR" -o "$ICON_ICNS"
   cp "$ICON_ICNS" "$APP_BUNDLE/Contents/Resources/app.icns"
 fi

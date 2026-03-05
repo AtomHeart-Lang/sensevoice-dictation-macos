@@ -1,6 +1,6 @@
-# SenseVoice Dictation for macOS（中文说明）
+# FunASR Dictation for macOS（中文说明）
 
-SenseVoice Dictation 是一个基于 [Fun-ASR-Nano-2512](https://github.com/FunAudioLLM/Fun-ASR) 的 macOS 菜单栏语音输入工具：
+FunASR Dictation 是一个基于 [Fun-ASR-Nano-2512](https://github.com/FunAudioLLM/Fun-ASR) 的 macOS 菜单栏语音输入工具：
 - 按一次触发键开始录音
 - 再按一次停止录音
 - 使用 Fun-ASR-Nano-2512 转写
