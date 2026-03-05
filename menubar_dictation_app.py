@@ -475,6 +475,13 @@ def ui_hotkey_settings_action(settings: "UISettings") -> str:
     hotkey = normalize_keyboard_hotkey(settings.keyboard_hotkey)
     mouse_value = normalize_mouse_button(settings.mouse_button) or settings.mouse_button
     alert = NSAlert.alloc().init()
+    # Hide NSAlert default app icon area (which can show Python icon) and
+    # render our own centered header/icon in accessory view.
+    try:
+        blank_icon = NSImage.alloc().initWithSize_((1.0, 1.0))
+        alert.setIcon_(blank_icon)
+    except Exception:
+        pass
     alert.setMessageText_("")
     alert.setInformativeText_("")
 
@@ -484,17 +491,17 @@ def ui_hotkey_settings_action(settings: "UISettings") -> str:
         hotkey=hotkey,
         mouse=mouse_value,
     )
-    panel = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 450, 272))
+    panel = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 400, 208))
 
     icon = _app_icon_image(rounded=True)
     if icon is not None:
-        icon_size = 96
-        icon_x = (450 - icon_size) / 2.0
-        icon_view = NSImageView.alloc().initWithFrame_(NSMakeRect(icon_x, 176, icon_size, icon_size))
+        icon_size = 64
+        icon_x = (400 - icon_size) / 2.0
+        icon_view = NSImageView.alloc().initWithFrame_(NSMakeRect(icon_x, 132, icon_size, icon_size))
         icon_view.setImage_(icon)
         panel.addSubview_(icon_view)
 
-    title = NSTextField.alloc().initWithFrame_(NSMakeRect(10, 132, 430, 32))
+    title = NSTextField.alloc().initWithFrame_(NSMakeRect(10, 104, 380, 30))
     title.setEditable_(False)
     title.setBezeled_(False)
     title.setDrawsBackground_(False)
@@ -503,19 +510,19 @@ def ui_hotkey_settings_action(settings: "UISettings") -> str:
     title.setStringValue_(tr("menu_hotkey_settings"))
     panel.addSubview_(title)
 
-    y = 102
+    y = 78
     for line in summary.splitlines():
         if not line.strip():
-            y -= 12
+            y -= 6
             continue
-        text = NSTextField.alloc().initWithFrame_(NSMakeRect(20, y, 410, 26))
+        text = NSTextField.alloc().initWithFrame_(NSMakeRect(22, y, 356, 22))
         text.setEditable_(False)
         text.setBezeled_(False)
         text.setDrawsBackground_(False)
         text.setSelectable_(False)
         text.setStringValue_(line)
         panel.addSubview_(text)
-        y -= 28
+        y -= 24
 
     alert.setAccessoryView_(panel)
     alert.addButtonWithTitle_(tr("hotkey_settings_btn_set_keyboard"))

@@ -41,6 +41,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
   <string>1.0</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
+  <key>LSUIElement</key>
+  <true/>
   <key>CFBundleExecutable</key>
   <string>FunASRLauncher</string>
   <key>CFBundleIconFile</key>
