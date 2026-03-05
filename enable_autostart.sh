@@ -2,8 +2,10 @@
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
-PLIST="$HOME/Library/LaunchAgents/com.lee.sensevoice.menubar.plist"
-LABEL="com.lee.sensevoice.menubar"
+PLIST="$HOME/Library/LaunchAgents/com.lee.funasr.menubar.plist"
+LABEL="com.lee.funasr.menubar"
+LEGACY_PLIST="$HOME/Library/LaunchAgents/com.lee.sensevoice.menubar.plist"
+LEGACY_LABEL="com.lee.sensevoice.menubar"
 DOMAIN="gui/$(id -u)"
 AUTOSTART_DIR="$HOME/Library/Application Support/SenseVoiceDictation"
 AUTOSTART_RUNNER="$AUTOSTART_DIR/autostart_runner.sh"
@@ -108,6 +110,10 @@ PLIST
 
 launchctl bootout "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
 launchctl bootout "$DOMAIN" "$PLIST" >/dev/null 2>&1 || true
+launchctl bootout "$DOMAIN/$LEGACY_LABEL" >/dev/null 2>&1 || true
+launchctl bootout "$DOMAIN" "$LEGACY_PLIST" >/dev/null 2>&1 || true
+launchctl disable "$DOMAIN/$LEGACY_LABEL" >/dev/null 2>&1 || true
+rm -f "$LEGACY_PLIST"
 launchctl enable "$DOMAIN/$LABEL" >/dev/null 2>&1 || true
 launchctl bootstrap "$DOMAIN" "$PLIST"
 launchctl kickstart -k "$DOMAIN/$LABEL" >/dev/null 2>&1 || true

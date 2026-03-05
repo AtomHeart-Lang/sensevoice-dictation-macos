@@ -2,7 +2,8 @@
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
-LAUNCH_LABEL="com.lee.sensevoice.menubar"
+LAUNCH_LABEL="com.lee.funasr.menubar"
+LEGACY_LAUNCH_LABEL="com.lee.sensevoice.menubar"
 LAUNCH_DOMAIN="gui/$(id -u)"
 AUTOSTART_DIR="$HOME/Library/Application Support/SenseVoiceDictation"
 AUTOSTART_LOG_DIR="$HOME/Library/Logs/SenseVoiceDictation"
@@ -22,6 +23,7 @@ for arg in "$@"; do
 done
 
 PLISTS=(
+  "$HOME/Library/LaunchAgents/com.lee.funasr.menubar.plist"
   "$HOME/Library/LaunchAgents/com.lee.sensevoice.hotkey.plist"
   "$HOME/Library/LaunchAgents/com.lee.sensevoice.hotkey.mac.plist"
   "$HOME/Library/LaunchAgents/com.lee.sensevoice.menubar.plist"
@@ -37,6 +39,8 @@ DESKTOP_APP="$HOME/Desktop/FunASR Dictation.app"
 LEGACY_APP_BUNDLE="$HOME/Applications/SenseVoice Dictation.app"
 LEGACY_DESKTOP_APP="$HOME/Desktop/SenseVoice Dictation.app"
 TCC_IDS=(
+  "com.lee.funasr.dictation.launcher"
+  "com.lee.funasr.menubar"
   "com.lee.sensevoice.dictation.launcher"
   "com.lee.sensevoice.menubar"
 )
@@ -45,6 +49,8 @@ TCC_IDS=(
 echo "[Step] Disable launch agents"
 launchctl bootout "$LAUNCH_DOMAIN/$LAUNCH_LABEL" >/dev/null 2>&1 || true
 launchctl disable "$LAUNCH_DOMAIN/$LAUNCH_LABEL" >/dev/null 2>&1 || true
+launchctl bootout "$LAUNCH_DOMAIN/$LEGACY_LAUNCH_LABEL" >/dev/null 2>&1 || true
+launchctl disable "$LAUNCH_DOMAIN/$LEGACY_LAUNCH_LABEL" >/dev/null 2>&1 || true
 for p in "${PLISTS[@]}"; do
   if [[ -f "$p" ]]; then
     launchctl bootout "$LAUNCH_DOMAIN" "$p" >/dev/null 2>&1 || true

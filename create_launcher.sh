@@ -10,6 +10,7 @@ LEGACY_APP_BUNDLE="$HOME/Applications/$LEGACY_APP_NAME.app"
 LEGACY_DESKTOP_APP="$HOME/Desktop/$LEGACY_APP_NAME.app"
 APP_ICON_PNG="$APP_DIR/assets/app_launcher_icon.png"
 MENU_ICON_PNG="$APP_DIR/assets/mic_menu_icon.png"
+APP_BUNDLE_ID="com.lee.funasr.dictation.launcher"
 
 if ! command -v clang >/dev/null 2>&1; then
   echo "[ERROR] clang not found. Install Xcode Command Line Tools first: xcode-select --install"
@@ -33,7 +34,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key>
   <string>FunASR Dictation</string>
   <key>CFBundleIdentifier</key>
-  <string>com.lee.sensevoice.dictation.launcher</string>
+  <string>$APP_BUNDLE_ID</string>
   <key>CFBundleVersion</key>
   <string>1.0</string>
   <key>CFBundleShortVersionString</key>
@@ -43,6 +44,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key>
   <string>FunASRLauncher</string>
   <key>CFBundleIconFile</key>
+  <string>app</string>
+  <key>CFBundleIconName</key>
   <string>app</string>
   <key>LSMinimumSystemVersion</key>
   <string>11.0</string>

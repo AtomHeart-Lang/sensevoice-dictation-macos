@@ -298,6 +298,12 @@ batch_size_s = 0
 说明：
 - 若终端启动可用但启动器不可用，请重建启动器并重新核对权限。
 - 桌面快捷方式指向 `~/Applications` 同一个应用，避免 TCC 列表重复。
+- 如果权限列表里仍残留旧的 `SenseVoice Dictation` 条目，可执行一次旧权限重置：
+  - `tccutil reset Accessibility com.lee.sensevoice.dictation.launcher`
+  - `tccutil reset ListenEvent com.lee.sensevoice.dictation.launcher`
+  - `tccutil reset Accessibility com.lee.sensevoice.menubar`
+  - `tccutil reset ListenEvent com.lee.sensevoice.menubar`
+  - 然后执行 `./create_launcher.sh`，重新打开 `FunASR Dictation.app` 并给新条目重新勾选权限。
 
 ## GitHub 分享
 

@@ -298,6 +298,12 @@ Grant permissions to the actual running process chain:
 Notes:
 - If launch from Terminal works but launcher fails, re-create launcher and re-check permissions.
 - Desktop shortcut points to the same app in `~/Applications` to avoid duplicate TCC rows.
+- If you still see old `SenseVoice Dictation` rows in Privacy settings, reset old entries once:
+  - `tccutil reset Accessibility com.lee.sensevoice.dictation.launcher`
+  - `tccutil reset ListenEvent com.lee.sensevoice.dictation.launcher`
+  - `tccutil reset Accessibility com.lee.sensevoice.menubar`
+  - `tccutil reset ListenEvent com.lee.sensevoice.menubar`
+  - Then run `./create_launcher.sh`, reopen `FunASR Dictation.app`, and re-enable permissions for the new entry.
 
 ## GitHub Sharing
 

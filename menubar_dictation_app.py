@@ -24,6 +24,7 @@ from AppKit import (
     NSAlertFirstButtonReturn,
     NSApplication,
     NSApplicationActivationPolicyAccessory,
+    NSBezierPath,
     NSBezelBorder,
     NSButton,
     NSControlStateValueOn,
@@ -86,7 +87,8 @@ EMOJI_RE = re.compile(
     "]+",
     flags=re.UNICODE,
 )
-AUTOSTART_PLIST = Path.home() / "Library/LaunchAgents/com.lee.sensevoice.menubar.plist"
+AUTOSTART_PLIST = Path.home() / "Library/LaunchAgents/com.lee.funasr.menubar.plist"
+LEGACY_AUTOSTART_PLIST = Path.home() / "Library/LaunchAgents/com.lee.sensevoice.menubar.plist"
 AUTOSTART_RUNNER = (
     Path.home() / "Library/Application Support/SenseVoiceDictation/autostart_runner.sh"
 )
@@ -98,6 +100,8 @@ MODEL_CACHE_DIRS = [
     Path.home() / ".cache/modelscope/hub/models/iic/SenseVoiceSmall",
     Path.home() / ".cache/modelscope/hub/models/iic/speech_fsmn_vad_zh-cn-16k-common-pytorch",
 ]
+_APP_ICON_CACHE: Optional[NSImage] = None
+_APP_ICON_ROUNDED_CACHE: Optional[NSImage] = None
 
 logging.basicConfig(
     filename=str(LOG_PATH),
@@ -341,12 +345,44 @@ def _applescript_escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def _app_icon_image() -> Optional[NSImage]:
-    icon_path = APP_ICON if Path(APP_ICON).exists() else MENU_ICON
-    if not Path(icon_path).exists():
+def _rounded_icon_image(image: NSImage, ratio: float = 0.22) -> NSImage:
+    size = image.size()
+    w = float(size.width)
+    h = float(size.height)
+    if w <= 1 or h <= 1:
+        return image
+    rect = NSMakeRect(0, 0, w, h)
+    rounded = NSImage.alloc().initWithSize_(size)
+    rounded.lockFocus()
+    try:
+        radius = min(w, h) * ratio
+        clip = NSBezierPath.bezierPathWithRoundedRect_xRadius_yRadius_(rect, radius, radius)
+        clip.addClip()
+        image.drawInRect_(rect)
+    finally:
+        rounded.unlockFocus()
+    return rounded
+
+
+def _app_icon_image(*, rounded: bool = False) -> Optional[NSImage]:
+    global _APP_ICON_CACHE, _APP_ICON_ROUNDED_CACHE
+    if _APP_ICON_CACHE is None:
+        icon_path = APP_ICON if Path(APP_ICON).exists() else MENU_ICON
+        if Path(icon_path).exists():
+            icon = NSImage.alloc().initWithContentsOfFile_(icon_path)
+            if icon is not None:
+                _APP_ICON_CACHE = icon
+    if _APP_ICON_CACHE is None:
         return None
-    icon = NSImage.alloc().initWithContentsOfFile_(icon_path)
-    return icon if icon is not None else None
+    if not rounded:
+        return _APP_ICON_CACHE
+    if _APP_ICON_ROUNDED_CACHE is None:
+        try:
+            _APP_ICON_ROUNDED_CACHE = _rounded_icon_image(_APP_ICON_CACHE)
+        except Exception as exc:
+            logging.warning("rounded icon render failed: %s", exc)
+            _APP_ICON_ROUNDED_CACHE = _APP_ICON_CACHE
+    return _APP_ICON_ROUNDED_CACHE
 
 
 def ui_alert_native(message: str, title: Optional[str] = None) -> None:
@@ -355,7 +391,7 @@ def ui_alert_native(message: str, title: Optional[str] = None) -> None:
     alert = NSAlert.alloc().init()
     alert.setMessageText_(title or tr("app_name"))
     alert.setInformativeText_(message)
-    icon = _app_icon_image()
+    icon = _app_icon_image(rounded=True)
     if icon is not None:
         alert.setIcon_(icon)
     alert.addButtonWithTitle_(tr("ok"))
@@ -374,7 +410,7 @@ def ui_prompt_text_native(
     alert = NSAlert.alloc().init()
     alert.setMessageText_(title)
     alert.setInformativeText_(message)
-    icon = _app_icon_image()
+    icon = _app_icon_image(rounded=True)
     if icon is not None:
         alert.setIcon_(icon)
     alert.addButtonWithTitle_(ok_text)
@@ -403,7 +439,7 @@ def ui_choice_native(
     alert = NSAlert.alloc().init()
     alert.setMessageText_(title)
     alert.setInformativeText_(message)
-    icon = _app_icon_image()
+    icon = _app_icon_image(rounded=True)
     if icon is not None:
         alert.setIcon_(icon)
     alert.addButtonWithTitle_(primary_text)
@@ -458,7 +494,7 @@ def _show_capture_progress_window(title: str, message: str):
     content = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 420, 150))
     window.setContentView_(content)
 
-    icon = _app_icon_image()
+    icon = _app_icon_image(rounded=True)
     if icon is not None:
         icon_view = NSImageView.alloc().initWithFrame_(NSMakeRect(20, 84, 46, 46))
         icon_view.setImage_(icon)
@@ -703,7 +739,7 @@ def ui_edit_model_config(current: CoreConfig) -> Optional[CoreConfig]:
         alert = NSAlert.alloc().init()
         alert.setMessageText_(tr("model_config_title"))
         alert.setInformativeText_(tr("model_config_intro"))
-        icon = _app_icon_image()
+        icon = _app_icon_image(rounded=True)
         if icon is not None:
             alert.setIcon_(icon)
         alert.addButtonWithTitle_(tr("save"))
@@ -1060,15 +1096,26 @@ def ensure_listen_permission() -> bool:
     return ok
 
 
+def _effective_autostart_plist() -> Path:
+    if AUTOSTART_PLIST.exists():
+        return AUTOSTART_PLIST
+    if LEGACY_AUTOSTART_PLIST.exists():
+        return LEGACY_AUTOSTART_PLIST
+    return AUTOSTART_PLIST
+
+
 def is_os_autostart_enabled() -> bool:
-    return AUTOSTART_PLIST.exists()
+    return AUTOSTART_PLIST.exists() or LEGACY_AUTOSTART_PLIST.exists()
 
 
 def is_os_autostart_legacy() -> bool:
-    if not AUTOSTART_PLIST.exists():
+    plist = _effective_autostart_plist()
+    if not plist.exists():
         return False
+    if plist == LEGACY_AUTOSTART_PLIST:
+        return True
     try:
-        content = AUTOSTART_PLIST.read_text(encoding="utf-8", errors="ignore")
+        content = plist.read_text(encoding="utf-8", errors="ignore")
     except Exception:
         return False
     return str(AUTOSTART_RUNNER) not in content
