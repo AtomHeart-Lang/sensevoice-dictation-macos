@@ -2254,52 +2254,85 @@ class TriggerController:
 
         def loop():
             try:
-                started.set()
-                logging.info(
-                    "keyboard polling started: hotkey=%s keycode=%s mods=%s",
-                    hotkey,
-                    self.required_keycode,
-                    sorted(self.required_mods),
+                event_mask = (
+                    (1 << Quartz.kCGEventKeyDown)
+                    | (1 << Quartz.kCGEventKeyUp)
+                    | (1 << Quartz.kCGEventFlagsChanged)
                 )
-                while not self.keyboard_stop_event.is_set():
-                    flags = int(
-                        Quartz.CGEventSourceFlagsState(
-                            Quartz.kCGEventSourceStateCombinedSessionState
-                        )
-                    )
-                    self.active_mods = set(mods_from_flags(flags))
-                    key_down = bool(
-                        Quartz.CGEventSourceKeyState(
-                            Quartz.kCGEventSourceStateCombinedSessionState,
-                            self.required_keycode,
-                        )
-                    )
-                    if key_down:
-                        self.pressed_keycodes.add(self.required_keycode)
-                    else:
-                        self.pressed_keycodes.discard(self.required_keycode)
 
-                    combo_now = key_down and self.required_mods.issubset(self.active_mods)
+                def handler(proxy, event_type, event, refcon):
+                    if self.keyboard_stop_event.is_set():
+                        return event
+                    if event_type in (
+                        Quartz.kCGEventTapDisabledByTimeout,
+                        getattr(Quartz, "kCGEventTapDisabledByUserInput", -1),
+                    ):
+                        Quartz.CGEventTapEnable(self.keyboard_tap, True)
+                        return event
+
+                    keycode = int(
+                        Quartz.CGEventGetIntegerValueField(event, Quartz.kCGKeyboardEventKeycode)
+                    )
+                    flags = int(Quartz.CGEventGetFlags(event))
+                    self.active_mods = set(mods_from_flags(flags))
+
+                    if event_type == Quartz.kCGEventKeyDown:
+                        is_repeat = int(
+                            Quartz.CGEventGetIntegerValueField(
+                                event, Quartz.kCGKeyboardEventAutorepeat
+                            )
+                        )
+                        if is_repeat:
+                            return event
+                        self.pressed_keycodes.add(keycode)
+                    elif event_type == Quartz.kCGEventKeyUp:
+                        self.pressed_keycodes.discard(keycode)
+                    # For flags-changed, no direct key add/remove here; we only refresh modifiers.
+
+                    combo_now = (
+                        self.required_keycode in self.pressed_keycodes
+                        and self.required_mods.issubset(self.active_mods)
+                    )
                     if combo_now and not self.combo_armed:
                         self.combo_armed = True
                         logging.info(
-                            "keyboard combo matched keycode=%s required_mods=%s active_mods=%s",
+                            "keyboard combo matched keycode=%s required_mods=%s active_mods=%s pressed=%s",
                             self.required_keycode,
                             sorted(self.required_mods),
                             sorted(self.active_mods),
+                            sorted(self.pressed_keycodes),
                         )
                         self._fire_callback()
                     elif not combo_now:
                         self.combo_armed = False
+                    return event
 
-                    time.sleep(0.012)
+                self.keyboard_tap = Quartz.CGEventTapCreate(
+                    EVENT_TAP_LOCATION,
+                    Quartz.kCGHeadInsertEventTap,
+                    Quartz.kCGEventTapOptionDefault,
+                    event_mask,
+                    handler,
+                    None,
+                )
+                if self.keyboard_tap is None:
+                    startup_error["err"] = RuntimeError("Failed to create keyboard event tap")
+                    started.set()
+                    return
+
+                source = Quartz.CFMachPortCreateRunLoopSource(None, self.keyboard_tap, 0)
+                self.keyboard_runloop = Quartz.CFRunLoopGetCurrent()
+                Quartz.CFRunLoopAddSource(self.keyboard_runloop, source, Quartz.kCFRunLoopCommonModes)
+                Quartz.CGEventTapEnable(self.keyboard_tap, True)
+                started.set()
+                Quartz.CFRunLoopRun()
             except Exception as exc:
                 startup_error["err"] = exc
                 started.set()
 
         self.keyboard_thread = threading.Thread(target=loop, daemon=True)
         self.keyboard_thread.start()
-        started.wait(timeout=1.0)
+        started.wait(timeout=1.5)
         if startup_error["err"] is not None:
             raise startup_error["err"]
 
@@ -2553,13 +2586,9 @@ class SenseVoiceMenuBarApp(rumps.App):
         self.engine.toggle_recording()
 
     def enable_dictation(self, *, show_alert: bool = True, request_prompt: bool = True) -> None:
-        # Keyboard trigger now uses key-state polling and does not depend on
-        # Input Monitoring event tap permissions. Mouse trigger still needs them.
-        permission_ok = True
-        if self.ui_settings.trigger_mode == "mouse":
-            permission_ok = ensure_listen_permission(request_prompt=request_prompt)
-            if not permission_ok:
-                logging.warning("enable_dictation: preflight permission check failed, continue to probe taps")
+        permission_ok = ensure_listen_permission(request_prompt=request_prompt)
+        if not permission_ok:
+            logging.warning("enable_dictation: preflight permission check failed, continue to probe taps")
         try:
             logging.info("enable_dictation: mode=%s", self.ui_settings.trigger_mode)
             if self.ui_settings.trigger_mode == "mouse":

@@ -61,46 +61,37 @@ PLIST
 LAUNCH_SRC="$TMP_DIR/launcher_main.m"
 cat > "$LAUNCH_SRC" <<SRC
 #include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
-#include <stdio.h>
-#import <Foundation/Foundation.h>
+#include <ApplicationServices/ApplicationServices.h>
+#include <CoreFoundation/CoreFoundation.h>
+
+static void request_tcc_permissions(void) {
+    // Input Monitoring prompt (ListenEvent).
+    CGRequestListenEventAccess();
+    // Accessibility prompt.
+    const void *keys[] = { kAXTrustedCheckOptionPrompt };
+    const void *vals[] = { kCFBooleanTrue };
+    CFDictionaryRef options = CFDictionaryCreate(
+        kCFAllocatorDefault,
+        keys,
+        vals,
+        1,
+        &kCFCopyStringDictionaryKeyCallBacks,
+        &kCFTypeDictionaryValueCallBacks
+    );
+    if (options != NULL) {
+        AXIsProcessTrustedWithOptions(options);
+        CFRelease(options);
+    }
+}
 
 int main(void) {
-    if (chdir("$APP_DIR") != 0) {
-        execl(
-            "/usr/bin/osascript",
-            "osascript",
-            "-e",
-            "display dialog \"FunASR Dictation failed to start: cannot open app directory.\" buttons {\"OK\"} default button \"OK\"",
-            (char *)NULL
-        );
-        return 2;
-    }
-    // Launch worker in child process, keep launcher lifecycle short so
-    // LaunchServices can always re-open app reliably (avoid open -600).
-    pid_t pid = fork();
-    if (pid == 0) {
-        setsid();
-        execl("/bin/bash", "bash", "./launch_from_desktop.sh", (char *)NULL);
-        _exit(127);
-    }
-    if (pid > 0) {
-        return 0;
-    }
-    char buf[512];
-    snprintf(buf, sizeof(buf), "display dialog \"FunASR Dictation failed to start (fork error %d).\" buttons {\"OK\"} default button \"OK\"", errno);
-    execl("/usr/bin/osascript", "osascript", "-e", buf, (char *)NULL);
-    return 3;
+    request_tcc_permissions();
+    return system("cd '$APP_DIR' && ./launch_from_desktop.sh >/dev/null 2>&1");
 }
 SRC
 clang "$LAUNCH_SRC" -O2 \
-  -fobjc-arc \
-  -fblocks \
   -framework ApplicationServices \
   -framework CoreFoundation \
-  -framework Foundation \
-  -framework AVFoundation \
   -o "$APP_BUNDLE/Contents/MacOS/FunASRLauncher"
 
 ICON_SRC="$APP_ICON_PNG"
