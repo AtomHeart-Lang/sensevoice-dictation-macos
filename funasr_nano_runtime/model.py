@@ -23,6 +23,24 @@ from tools.utils import forced_align
 dtype_map = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}
 
 
+def _legacy_timestamp_pairs(items):
+    """Convert forced-align outputs to [start, end] pairs expected by AutoModel VAD merger."""
+    pairs = []
+    if not items:
+        return pairs
+    for item in items:
+        try:
+            if isinstance(item, dict):
+                start = float(item.get("start_time", 0.0))
+                end = float(item.get("end_time", 0.0))
+                pairs.append([start, end])
+            elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                pairs.append([float(item[0]), float(item[1])])
+        except Exception:
+            continue
+    return pairs
+
+
 @tables.register("model_classes", "FunASRNano")
 class FunASRNano(nn.Module):
     def __init__(
@@ -622,8 +640,11 @@ class FunASRNano(nn.Module):
             data_in, data_lengths, key, tokenizer, frontend, **kwargs
         )
 
+        # Dictation path does not need CTC/timestamp alignment by default.
+        # Keeping this off avoids expensive forced alignment and improves latency.
+        enable_ctc_aux = bool(kwargs.get("enable_ctc_aux", False))
         ctc_results = []
-        if self.ctc_decoder is not None:
+        if enable_ctc_aux and self.ctc_decoder is not None:
             encoder_out = meta_data["encoder_out"]
             encoder_out_lens = meta_data["encoder_out_lens"]
             decoder_out, decoder_out_lens = self.ctc_decoder(encoder_out, encoder_out_lens)
@@ -714,21 +735,25 @@ class FunASRNano(nn.Module):
             result_i["loss"] = loss
         results.append(result_i)
 
-        for ctc_result, result in zip(ctc_results, results):
-            result["ctc_text"] = ctc_result["text"].replace("<|nospeech|>", "")
-            target_ids = torch.tensor(
-                self.ctc_tokenizer.encode(result["ctc_text"]), dtype=torch.int64
-            )
-            result["ctc_timestamps"] = forced_align(
-                ctc_result["ctc_logits"], target_ids, self.blank_id
-            )
-            target_ids = torch.tensor(self.ctc_tokenizer.encode(result["text"]), dtype=torch.int64)
-            result["timestamps"] = forced_align(ctc_result["ctc_logits"], target_ids, self.blank_id)
-            for timestamps in [result["timestamps"], result["ctc_timestamps"]]:
-                for timestamp in timestamps:
-                    timestamp["token"] = self.ctc_tokenizer.decode([timestamp["token"]])
-                    timestamp["start_time"] = timestamp["start_time"] * 6 * 10 / 1000
-                    timestamp["end_time"] = timestamp["end_time"] * 6 * 10 / 1000
+        if enable_ctc_aux:
+            for ctc_result, result in zip(ctc_results, results):
+                result["ctc_text"] = ctc_result["text"].replace("<|nospeech|>", "")
+                target_ids = torch.tensor(
+                    self.ctc_tokenizer.encode(result["ctc_text"]), dtype=torch.int64
+                )
+                ctc_timestamps_raw = forced_align(
+                    ctc_result["ctc_logits"], target_ids, self.blank_id
+                )
+                target_ids = torch.tensor(self.ctc_tokenizer.encode(result["text"]), dtype=torch.int64)
+                timestamps_raw = forced_align(ctc_result["ctc_logits"], target_ids, self.blank_id)
+                # Keep details for debugging/advanced usage, and provide legacy pair format for
+                # funasr AutoModel inference_with_vad merge path.
+                # NOTE: keys must not start with "timestamp", because auto_model.py merges all
+                # such keys as legacy [start, end] pairs.
+                result["detail_ctc_timestamps"] = ctc_timestamps_raw
+                result["detail_timestamps"] = timestamps_raw
+                result["ctc_timestamps"] = _legacy_timestamp_pairs(ctc_timestamps_raw)
+                result["timestamps"] = _legacy_timestamp_pairs(timestamps_raw)
 
         if ibest_writer is not None:
             ibest_writer["text"][key[0]] = response.replace("\n", " ")

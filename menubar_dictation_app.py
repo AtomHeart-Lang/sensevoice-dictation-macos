@@ -159,8 +159,20 @@ I18N = {
     },
     "model_config_field_language": {"zh": "识别语言", "en": "Recognition Language"},
     "model_config_field_sample_rate": {"zh": "采样率 (Hz)", "en": "Sample Rate (Hz)"},
+    "model_config_field_sample_rate_help": {
+        "zh": "建议 16000；仅在设备不兼容时改为 44100/48000。",
+        "en": "Recommended: 16000. Use 44100/48000 only if your mic requires it.",
+    },
     "model_config_field_channels": {"zh": "声道数", "en": "Channels"},
+    "model_config_field_channels_help": {
+        "zh": "建议 1（单声道）；双声道麦克风可设为 2。",
+        "en": "Recommended: 1 (mono). Use 2 only for stereo input devices.",
+    },
     "model_config_field_paste_delay": {"zh": "粘贴延迟 (ms)", "en": "Paste Delay (ms)"},
+    "model_config_field_paste_delay_help": {
+        "zh": "建议 20-40；若偶发粘贴失败可提高到 60。",
+        "en": "Recommended: 20-40. If paste occasionally fails, try up to 60.",
+    },
     "model_config_field_hotwords": {"zh": "高频词（逗号或换行分隔）", "en": "Hot Words (comma/newline separated)"},
     "model_config_field_hotwords_help": {
         "zh": "用于专有词/人名/产品名，建议 5-50 个。",
@@ -664,7 +676,7 @@ def ui_edit_model_config(current: CoreConfig) -> Optional[CoreConfig]:
         alert.addButtonWithTitle_(tr("save"))
         alert.addButtonWithTitle_(tr("cancel"))
 
-        panel = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 450, 450))
+        panel = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 450, 452))
 
         def make_label(y: float, text: str):
             label = NSTextField.alloc().initWithFrame_(NSMakeRect(10, y, 160, 22))
@@ -701,34 +713,38 @@ def ui_edit_model_config(current: CoreConfig) -> Optional[CoreConfig]:
             return label
 
         def make_multiline_input(y: float, value: str):
-            scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(170, y, 270, 98))
+            scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(170, y, 270, 108))
             scroll.setBorderType_(NSBezelBorder)
             scroll.setHasVerticalScroller_(True)
             scroll.setHasHorizontalScroller_(False)
-            text_view = NSTextView.alloc().initWithFrame_(NSMakeRect(0, 0, 270, 98))
+            text_view = NSTextView.alloc().initWithFrame_(NSMakeRect(0, 0, 270, 108))
             text_view.setString_((value or "").replace(", ", "\n"))
             scroll.setDocumentView_(text_view)
             panel.addSubview_(scroll)
             return text_view
 
-        make_label(386, tr("model_config_field_language"))
-        language_field = make_input(384, state["language"])
-        make_label(354, tr("model_config_field_sample_rate"))
-        sample_rate_field = make_input(352, state["sample_rate"])
-        make_label(322, tr("model_config_field_channels"))
-        channels_field = make_input(320, state["channels"])
-        make_label(290, tr("model_config_field_paste_delay"))
-        paste_delay_field = make_input(288, state["paste_delay_ms"])
-        make_label(258, tr("model_config_field_hotwords"))
-        hotwords_field = make_multiline_input(158, state["hotwords"])
-        make_plain_text(138, tr("model_config_field_hotwords_help"))
+        make_label(426, tr("model_config_field_language"))
+        language_field = make_input(424, state["language"])
+        make_label(394, tr("model_config_field_sample_rate"))
+        sample_rate_field = make_input(392, state["sample_rate"])
+        make_plain_text(374, tr("model_config_field_sample_rate_help"))
+        make_label(348, tr("model_config_field_channels"))
+        channels_field = make_input(346, state["channels"])
+        make_plain_text(328, tr("model_config_field_channels_help"))
+        make_label(302, tr("model_config_field_paste_delay"))
+        paste_delay_field = make_input(300, state["paste_delay_ms"])
+        make_plain_text(282, tr("model_config_field_paste_delay_help"))
 
-        enable_beep_box = make_check(112, tr("model_config_opt_beep"), state["enable_beep"])
-        use_itn_box = make_check(88, tr("model_config_opt_itn"), state["use_itn"])
-        make_plain_text(70, tr("model_config_opt_itn_desc"))
-        merge_vad_box = make_check(48, tr("model_config_opt_merge_vad"), state["merge_vad"])
-        make_plain_text(30, tr("model_config_opt_merge_vad_desc"))
-        remove_emoji_box = make_check(8, tr("model_config_opt_remove_emoji"), state["remove_emoji"])
+        enable_beep_box = make_check(264, tr("model_config_opt_beep"), state["enable_beep"])
+        use_itn_box = make_check(238, tr("model_config_opt_itn"), state["use_itn"])
+        make_plain_text(220, tr("model_config_opt_itn_desc"))
+        merge_vad_box = make_check(196, tr("model_config_opt_merge_vad"), state["merge_vad"])
+        make_plain_text(178, tr("model_config_opt_merge_vad_desc"))
+        remove_emoji_box = make_check(164, tr("model_config_opt_remove_emoji"), state["remove_emoji"])
+
+        make_label(136, tr("model_config_field_hotwords"))
+        make_plain_text(118, tr("model_config_field_hotwords_help"))
+        hotwords_field = make_multiline_input(8, state["hotwords"])
 
         alert.setAccessoryView_(panel)
         resp = alert.runModal()

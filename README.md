@@ -96,6 +96,13 @@ Model Config fields in UI (localized by system language):
 - Merge Long-Pause Segments (`merge_vad`)
 - Remove Emoji Symbols (`remove_emoji`)
 
+### Input/Paste recommendations
+
+- `sample_rate`: recommended `16000`; use `44100`/`48000` only when your microphone driver requires it.
+- `channels`: recommended `1` (mono); use `2` only for true stereo capture devices.
+- `paste_delay_ms`: recommended `20-40`; if paste occasionally fails, increase to `60`.
+- These recommendations are shown directly in the Model Config UI.
+
 ### Option behavior (plain-language)
 
 `Normalize Numbers/Dates` (`use_itn`)
