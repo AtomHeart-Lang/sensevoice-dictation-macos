@@ -60,6 +60,8 @@ PLIST
 LAUNCH_SRC="$TMP_DIR/launcher_main.m"
 cat > "$LAUNCH_SRC" <<SRC
 #include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
 #include <ApplicationServices/ApplicationServices.h>
 #include <CoreFoundation/CoreFoundation.h>
 #import <Foundation/Foundation.h>
@@ -105,7 +107,14 @@ static void request_tcc_permissions(void) {
 
 int main(void) {
     request_tcc_permissions();
-    return system("cd '$APP_DIR' && ./launch_from_desktop.sh >/dev/null 2>&1");
+    if (chdir("$APP_DIR") != 0) {
+        return 2;
+    }
+    // Use exec (same process identity) instead of system()/sh -c.
+    // This keeps the permission attribution chain stable for event taps.
+    execl("./launch_from_desktop.sh", "./launch_from_desktop.sh", (char *)NULL);
+    (void)errno;
+    return 3;
 }
 SRC
 clang "$LAUNCH_SRC" -O2 \

@@ -31,6 +31,7 @@ from AppKit import (
     NSImage,
     NSImageView,
     NSMakeRect,
+    NSMakeSize,
     NSProgressIndicator,
     NSProgressIndicatorStyleSpinning,
     NSScrollView,
@@ -477,11 +478,8 @@ def ui_hotkey_settings_action(settings: "UISettings") -> str:
     alert = NSAlert.alloc().init()
     # Hide NSAlert default app icon area (which can show Python icon) and
     # render our own centered header/icon in accessory view.
-    try:
-        blank_icon = NSImage.alloc().initWithSize_((1.0, 1.0))
-        alert.setIcon_(blank_icon)
-    except Exception:
-        pass
+    blank_icon = NSImage.alloc().initWithSize_(NSMakeSize(1.0, 1.0))
+    alert.setIcon_(blank_icon)
     alert.setMessageText_("")
     alert.setInformativeText_("")
 
@@ -491,17 +489,17 @@ def ui_hotkey_settings_action(settings: "UISettings") -> str:
         hotkey=hotkey,
         mouse=mouse_value,
     )
-    panel = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 400, 208))
+    panel = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 360, 178))
 
     icon = _app_icon_image(rounded=True)
     if icon is not None:
-        icon_size = 64
-        icon_x = (400 - icon_size) / 2.0
-        icon_view = NSImageView.alloc().initWithFrame_(NSMakeRect(icon_x, 132, icon_size, icon_size))
+        icon_size = 52
+        icon_x = (360 - icon_size) / 2.0
+        icon_view = NSImageView.alloc().initWithFrame_(NSMakeRect(icon_x, 114, icon_size, icon_size))
         icon_view.setImage_(icon)
         panel.addSubview_(icon_view)
 
-    title = NSTextField.alloc().initWithFrame_(NSMakeRect(10, 104, 380, 30))
+    title = NSTextField.alloc().initWithFrame_(NSMakeRect(10, 88, 340, 24))
     title.setEditable_(False)
     title.setBezeled_(False)
     title.setDrawsBackground_(False)
@@ -510,19 +508,19 @@ def ui_hotkey_settings_action(settings: "UISettings") -> str:
     title.setStringValue_(tr("menu_hotkey_settings"))
     panel.addSubview_(title)
 
-    y = 78
+    y = 60
     for line in summary.splitlines():
         if not line.strip():
-            y -= 6
+            y -= 4
             continue
-        text = NSTextField.alloc().initWithFrame_(NSMakeRect(22, y, 356, 22))
+        text = NSTextField.alloc().initWithFrame_(NSMakeRect(18, y, 324, 20))
         text.setEditable_(False)
         text.setBezeled_(False)
         text.setDrawsBackground_(False)
         text.setSelectable_(False)
         text.setStringValue_(line)
         panel.addSubview_(text)
-        y -= 24
+        y -= 20
 
     alert.setAccessoryView_(panel)
     alert.addButtonWithTitle_(tr("hotkey_settings_btn_set_keyboard"))
