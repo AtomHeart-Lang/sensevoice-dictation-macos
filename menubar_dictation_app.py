@@ -94,7 +94,7 @@ LEGACY_AUTOSTART_PLIST = Path.home() / "Library/LaunchAgents/com.lee.sensevoice.
 AUTOSTART_RUNNER = (
     Path.home() / "Library/Application Support/SenseVoiceDictation/autostart_runner.sh"
 )
-AUTOSTART_RUNNER_VERSION = "2"
+AUTOSTART_RUNNER_VERSION = "3"
 ENABLE_AUTOSTART_SCRIPT = APP_DIR / "enable_autostart.sh"
 DISABLE_AUTOSTART_SCRIPT = APP_DIR / "disable_autostart.sh"
 MODEL_CACHE_DIRS = [
@@ -2833,6 +2833,15 @@ def main() -> None:
             bundle.infoDictionary()["LSUIElement"] = "1"
         app = NSApplication.sharedApplication()
         app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
+        # If launched hidden (e.g. by LaunchAgent/open flags), force unhide so
+        # the menu bar icon/status is visible.
+        try:
+            app.unhideWithoutActivation()
+        except Exception:
+            try:
+                app.unhide_(None)
+            except Exception:
+                pass
         # Force app icon for all NSAlert/NSWindow created by rumps (avoid Python rocket icon).
         if Path(APP_ICON).exists():
             icon = NSImage.alloc().initWithContentsOfFile_(APP_ICON)

@@ -19,7 +19,7 @@ cat > "$AUTOSTART_RUNNER" <<'RUNNER'
 #!/usr/bin/env bash
 set -uo pipefail
 
-# RUNNER_VERSION=2
+# RUNNER_VERSION=3
 APP_DIR="__APP_DIR__"
 START_SCRIPT="$APP_DIR/start_app.sh"
 LAUNCHER_APP="$HOME/Applications/FunASR Dictation.app"
@@ -45,7 +45,9 @@ if [[ ! -d "$LAUNCHER_APP" && -d "$LEGACY_LAUNCHER_APP" ]]; then
 fi
 
 if [[ -d "$LAUNCHER_APP" ]]; then
-  if /usr/bin/open -gj "$LAUNCHER_APP" >>"$RUNTIME_LOG" 2>&1; then
+  # Launch in background without forcing hidden state, otherwise menu bar icon
+  # may not appear reliably after login.
+  if /usr/bin/open -g "$LAUNCHER_APP" >>"$RUNTIME_LOG" 2>&1; then
     exit 0
   fi
   open_exit=$?
