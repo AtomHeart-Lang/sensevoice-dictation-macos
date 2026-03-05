@@ -2418,7 +2418,8 @@ class TriggerController:
 class SenseVoiceMenuBarApp(rumps.App):
     def __init__(self):
         super().__init__(
-            "SV Off",
+            tr("app_name"),
+            title="FA○",
             icon=MENU_ICON if Path(MENU_ICON).exists() else None,
             template=True,
             quit_button=None,
@@ -2435,6 +2436,10 @@ class SenseVoiceMenuBarApp(rumps.App):
         self.pending_reenable = False
         self.pending_startup_enable = False
         self.permission_hint_shown = False
+        self.last_published_title = ""
+        self._status_item_ready_logged = False
+        self._status_item_enforce_warned = False
+        self._menu_icon_ns: Optional[NSImage] = None
 
         self.engine = DictationEngine(
             self.core_config,
@@ -2476,10 +2481,53 @@ class SenseVoiceMenuBarApp(rumps.App):
         if self.ui_settings.enable_dictation_on_app_start:
             # Show menubar status immediately, then enable in runloop.
             self.on_engine_status("LOADING")
-            self.title = "…"
+            self.title = "FA…"
             self.status_item.title = f'{tr("status_prefix")}: {localized_status("LOADING")}'
             self.engine.warmup_async()
             self.pending_startup_enable = True
+
+    def _menu_icon_image(self) -> Optional[NSImage]:
+        if self._menu_icon_ns is not None:
+            return self._menu_icon_ns
+        try:
+            if not Path(MENU_ICON).exists():
+                return None
+            icon = NSImage.alloc().initWithContentsOfFile_(MENU_ICON)
+            if icon is None:
+                return None
+            icon.setTemplate_(True)
+            icon.setSize_(NSMakeSize(18.0, 18.0))
+            self._menu_icon_ns = icon
+            return self._menu_icon_ns
+        except Exception as exc:
+            if not self._status_item_enforce_warned:
+                self._status_item_enforce_warned = True
+                logging.warning("menu icon load failed: %s", exc)
+            return None
+
+    def _ensure_status_item_visible(self) -> None:
+        try:
+            nsapp = getattr(self, "_nsapp", None)
+            nsstatusitem = getattr(nsapp, "nsstatusitem", None)
+            if nsstatusitem is None:
+                return
+            nsstatusitem.setLength_(-1)
+            nsstatusitem.setTitle_(self.title or "FA○")
+            if nsstatusitem.image() is None:
+                icon = self._menu_icon_image()
+                if icon is not None:
+                    nsstatusitem.setImage_(icon)
+            if not self._status_item_ready_logged:
+                self._status_item_ready_logged = True
+                logging.info(
+                    "status item active: has_title=%s has_image=%s",
+                    bool(nsstatusitem.title()),
+                    nsstatusitem.image() is not None,
+                )
+        except Exception as exc:
+            if not self._status_item_enforce_warned:
+                self._status_item_enforce_warned = True
+                logging.warning("status item enforce failed: %s", exc)
 
     def on_engine_status(self, status: str) -> None:
         with self.status_lock:
@@ -2598,15 +2646,19 @@ class SenseVoiceMenuBarApp(rumps.App):
         with self.status_lock:
             status = self.current_status
         title_map = {
-            "OFF": "○",
-            "LOADING": "…",
-            "UPDATING": "⇡",
-            "READY": "✓",
-            "RECORDING": "●",
-            "TRANSCRIBING": "↻",
-            "ERROR": "!",
+            "OFF": "FA○",
+            "LOADING": "FA…",
+            "UPDATING": "FA⇡",
+            "READY": "FA✓",
+            "RECORDING": "FA●",
+            "TRANSCRIBING": "FA↻",
+            "ERROR": "FA!",
         }
-        self.title = title_map.get(status, "•")
+        self.title = title_map.get(status, "FA•")
+        if self.title != self.last_published_title:
+            self.last_published_title = self.title
+            logging.info("menubar title updated: %s (status=%s)", self.title, status)
+        self._ensure_status_item_visible()
         self.status_item.title = f'{tr("status_prefix")}: {localized_status(status)}'
 
     @rumps.clicked("Toggle Dictation")
@@ -2853,6 +2905,7 @@ def main() -> None:
     log_runtime_context()
 
     app = SenseVoiceMenuBarApp()
+    logging.info("main: app initialized, entering run loop")
     app.run()
 
 
