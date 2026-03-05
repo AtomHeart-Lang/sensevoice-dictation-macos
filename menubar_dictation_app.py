@@ -1527,6 +1527,7 @@ class DictationEngine:
     def _load_model_worker(self) -> None:
         self._set_status("LOADING")
         try:
+            load_errors = []
             try:
                 model = AutoModel(
                     model=MODEL_NAME,
@@ -1537,7 +1538,8 @@ class DictationEngine:
                     device="cpu",
                     disable_update=True,
                 )
-            except Exception:
+            except Exception as exc:
+                load_errors.append(f"trust_remote_code=True: {exc!r}")
                 model = AutoModel(
                     model=MODEL_NAME,
                     trust_remote_code=False,
@@ -1548,7 +1550,10 @@ class DictationEngine:
                 )
             with self.lock:
                 self.model = model
-        except Exception:
+            if load_errors:
+                logging.warning("model load fallback used: %s", " | ".join(load_errors))
+        except Exception as exc:
+            logging.exception("model load failed: %s", exc)
             self._set_status("ERROR")
         finally:
             with self.lock:

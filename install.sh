@@ -108,24 +108,27 @@ if [[ "$WITH_MODEL" -eq 1 ]]; then
 python - <<'PY'
 from funasr import AutoModel
 
-try:
-    model = AutoModel(
+errors = []
+for trust_remote_code, remote_code in ((True, "./model.py"), (False, None)):
+    kwargs = dict(
         model="FunAudioLLM/Fun-ASR-Nano-2512",
-        trust_remote_code=True,
-        remote_code="./model.py",
+        trust_remote_code=trust_remote_code,
         vad_model="iic/speech_fsmn_vad_zh-cn-16k-common-pytorch",
         vad_kwargs={"max_single_segment_time": 30000},
         device="cpu",
         disable_update=True,
     )
-except Exception:
-    model = AutoModel(
-        model="FunAudioLLM/Fun-ASR-Nano-2512",
-        trust_remote_code=False,
-        vad_model="iic/speech_fsmn_vad_zh-cn-16k-common-pytorch",
-        vad_kwargs={"max_single_segment_time": 30000},
-        device="cpu",
-        disable_update=True,
+    if remote_code is not None:
+        kwargs["remote_code"] = remote_code
+    try:
+        _ = AutoModel(**kwargs)
+        break
+    except Exception as exc:
+        errors.append(f"trust_remote_code={trust_remote_code}: {exc!r}")
+else:
+    raise RuntimeError(
+        "Model warmup failed. Ensure dependencies are installed (especially transformers/sentencepiece).\n"
+        + "\n".join(errors)
     )
 print('[OK] Model is ready')
 PY
