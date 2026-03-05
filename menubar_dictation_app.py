@@ -80,6 +80,7 @@ AUTOSTART_PLIST = Path.home() / "Library/LaunchAgents/com.lee.sensevoice.menubar
 AUTOSTART_RUNNER = (
     Path.home() / "Library/Application Support/SenseVoiceDictation/autostart_runner.sh"
 )
+AUTOSTART_RUNNER_VERSION = "2"
 ENABLE_AUTOSTART_SCRIPT = APP_DIR / "enable_autostart.sh"
 DISABLE_AUTOSTART_SCRIPT = APP_DIR / "disable_autostart.sh"
 MODEL_CACHE_DIRS = [
@@ -946,9 +947,20 @@ def is_os_autostart_runner_outdated() -> bool:
         content = AUTOSTART_RUNNER.read_text(encoding="utf-8", errors="ignore")
     except Exception:
         return False
+    version_marker = f"RUNNER_VERSION={AUTOSTART_RUNNER_VERSION}"
+    if version_marker not in content:
+        return True
+    app_dir_marker = f'APP_DIR="{APP_DIR}"'
+    if app_dir_marker not in content:
+        return True
     launcher_idx = content.find('if [[ -d "$LAUNCHER_APP" ]]; then')
     script_idx = content.find('if [[ -x "$START_SCRIPT" ]]; then')
-    return launcher_idx != -1 and script_idx != -1 and launcher_idx < script_idx
+    if launcher_idx != -1 and script_idx != -1 and launcher_idx < script_idx:
+        return True
+    # Old runner pattern: start script is executed directly and fallback launcher is never reached on failure.
+    if 'exec /bin/bash "$START_SCRIPT"' in content and "fallback to launcher app" not in content:
+        return True
+    return False
 
 
 def set_os_autostart_enabled(enable: bool) -> None:

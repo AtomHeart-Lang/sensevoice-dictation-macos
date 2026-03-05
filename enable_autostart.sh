@@ -15,8 +15,9 @@ mkdir -p "$AUTOSTART_LOG_DIR"
 
 cat > "$AUTOSTART_RUNNER" <<'RUNNER'
 #!/usr/bin/env bash
-set -euo pipefail
+set -uo pipefail
 
+# RUNNER_VERSION=2
 APP_DIR="__APP_DIR__"
 START_SCRIPT="$APP_DIR/start_app.sh"
 LAUNCHER_APP="$HOME/Applications/SenseVoice Dictation.app"
@@ -24,7 +25,7 @@ RUNTIME_LOG="$HOME/Library/Logs/SenseVoiceDictation/menubar_runtime.log"
 WAIT_LOG="$HOME/Library/Logs/SenseVoiceDictation/autostart_wait.log"
 
 wait_round=0
-while [[ ! -d "$APP_DIR" || ! -x "$START_SCRIPT" ]]; do
+while [[ ! -d "$APP_DIR" || ( ! -x "$START_SCRIPT" && ! -d "$LAUNCHER_APP" ) ]]; do
   wait_round=$((wait_round + 1))
   if (( wait_round % 15 == 0 )); then
     echo "[$(date '+%F %T')] waiting for app dir: $APP_DIR" >> "$WAIT_LOG"
@@ -38,11 +39,19 @@ fi
 
 if [[ -x "$START_SCRIPT" ]]; then
   cd "$APP_DIR"
-  exec /bin/bash "$START_SCRIPT" >>"$RUNTIME_LOG" 2>&1
+  if /bin/bash "$START_SCRIPT" >>"$RUNTIME_LOG" 2>&1; then
+    exit 0
+  fi
+  start_exit=$?
+  echo "[$(date '+%F %T')] start_app.sh failed with code $start_exit; fallback to launcher app" >> "$RUNTIME_LOG"
 fi
 
 if [[ -d "$LAUNCHER_APP" ]]; then
-  exec /usr/bin/open -gj "$LAUNCHER_APP" >>"$RUNTIME_LOG" 2>&1
+  if /usr/bin/open -gj "$LAUNCHER_APP" >>"$RUNTIME_LOG" 2>&1; then
+    exit 0
+  fi
+  open_exit=$?
+  echo "[$(date '+%F %T')] launcher open failed with code $open_exit" >> "$RUNTIME_LOG"
 fi
 
 echo "[$(date '+%F %T')] autostart failed: launcher/start script not found" >> "$RUNTIME_LOG"
