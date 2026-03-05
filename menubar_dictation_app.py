@@ -169,7 +169,7 @@ I18N = {
     "menu_use_keyboard": {"zh": "使用键盘触发", "en": "Use Keyboard Trigger"},
     "menu_use_mouse": {"zh": "使用鼠标触发", "en": "Use Mouse Trigger"},
     "menu_set_hotkey": {"zh": "设置键盘快捷键", "en": "Set Keyboard Hotkey"},
-    "menu_set_mouse": {"zh": "设置鼠标按键", "en": "Set Mouse Button"},
+    "menu_set_mouse": {"zh": "设置鼠标快捷键", "en": "Set Mouse Button"},
     "menu_hotkey_settings": {"zh": "快捷键设置", "en": "Hotkey Settings"},
     "menu_model_config": {"zh": "模型参数设置", "en": "Model Config"},
     "menu_update_model": {"zh": "更新模型", "en": "Update Model"},
@@ -490,37 +490,17 @@ def ui_hotkey_settings_action(
     hotkey = normalize_keyboard_hotkey(settings.keyboard_hotkey)
     mouse_value = normalize_mouse_button(settings.mouse_button) or settings.mouse_button
     alert = NSAlert.alloc().init()
-    # Hide NSAlert default app icon area (which can show Python icon) and
-    # render our own centered header/icon in accessory view.
-    blank_icon = NSImage.alloc().initWithSize_(NSMakeSize(1.0, 1.0))
-    alert.setIcon_(blank_icon)
-    alert.setMessageText_("")
+    alert.setMessageText_(tr("menu_hotkey_settings"))
     alert.setInformativeText_("")
-
-    panel_w = 342
-    panel_h = 210
-    panel = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, panel_w, panel_h))
-
     icon = _app_icon_image(rounded=True)
     if icon is not None:
-        icon_size = 48
-        icon_x = (panel_w - icon_size) / 2.0
-        icon_view = NSImageView.alloc().initWithFrame_(
-            NSMakeRect(icon_x, panel_h - 62, icon_size, icon_size)
-        )
-        icon_view.setImage_(icon)
-        panel.addSubview_(icon_view)
+        alert.setIcon_(icon)
 
-    title = NSTextField.alloc().initWithFrame_(NSMakeRect(10, panel_h - 92, panel_w - 20, 24))
-    title.setEditable_(False)
-    title.setBezeled_(False)
-    title.setDrawsBackground_(False)
-    title.setSelectable_(False)
-    title.setAlignment_(NSTextAlignmentCenter)
-    title.setStringValue_(tr("menu_hotkey_settings"))
-    panel.addSubview_(title)
+    panel_w = 308
+    panel_h = 116
+    panel = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, panel_w, panel_h))
 
-    mode_label = NSTextField.alloc().initWithFrame_(NSMakeRect(14, panel_h - 118, panel_w - 28, 18))
+    mode_label = NSTextField.alloc().initWithFrame_(NSMakeRect(8, 92, panel_w - 16, 18))
     mode_label.setEditable_(False)
     mode_label.setBezeled_(False)
     mode_label.setDrawsBackground_(False)
@@ -528,19 +508,19 @@ def ui_hotkey_settings_action(
     mode_label.setStringValue_(tr("hotkey_settings_mode_label"))
     panel.addSubview_(mode_label)
 
-    radio_keyboard = NSButton.alloc().initWithFrame_(NSMakeRect(22, panel_h - 144, 138, 20))
+    radio_keyboard = NSButton.alloc().initWithFrame_(NSMakeRect(16, 68, 120, 20))
     radio_keyboard.setButtonType_(NSRadioButton)
     radio_keyboard.setTitle_(tr("mode_keyboard"))
     radio_keyboard.setState_(NSControlStateValueOn if mode_value == "keyboard" else 0)
     panel.addSubview_(radio_keyboard)
 
-    radio_mouse = NSButton.alloc().initWithFrame_(NSMakeRect(180, panel_h - 144, 138, 20))
+    radio_mouse = NSButton.alloc().initWithFrame_(NSMakeRect(166, 68, 120, 20))
     radio_mouse.setButtonType_(NSRadioButton)
     radio_mouse.setTitle_(tr("mode_mouse"))
     radio_mouse.setState_(NSControlStateValueOn if mode_value == "mouse" else 0)
     panel.addSubview_(radio_mouse)
 
-    keyboard_line = NSTextField.alloc().initWithFrame_(NSMakeRect(14, panel_h - 166, panel_w - 28, 18))
+    keyboard_line = NSTextField.alloc().initWithFrame_(NSMakeRect(8, 42, panel_w - 16, 18))
     keyboard_line.setEditable_(False)
     keyboard_line.setBezeled_(False)
     keyboard_line.setDrawsBackground_(False)
@@ -548,7 +528,7 @@ def ui_hotkey_settings_action(
     keyboard_line.setStringValue_(tr("hotkey_settings_keyboard_line", value=hotkey))
     panel.addSubview_(keyboard_line)
 
-    mouse_line = NSTextField.alloc().initWithFrame_(NSMakeRect(14, panel_h - 188, panel_w - 28, 18))
+    mouse_line = NSTextField.alloc().initWithFrame_(NSMakeRect(8, 20, panel_w - 16, 18))
     mouse_line.setEditable_(False)
     mouse_line.setBezeled_(False)
     mouse_line.setDrawsBackground_(False)
@@ -556,19 +536,21 @@ def ui_hotkey_settings_action(
     mouse_line.setStringValue_(tr("hotkey_settings_mouse_line", value=mouse_value))
     panel.addSubview_(mouse_line)
 
-    tip_line = NSTextField.alloc().initWithFrame_(NSMakeRect(14, 8, panel_w - 28, 18))
-    tip_line.setEditable_(False)
-    tip_line.setBezeled_(False)
-    tip_line.setDrawsBackground_(False)
-    tip_line.setSelectable_(False)
-    tip_line.setStringValue_(tr("hotkey_settings_tip_compact"))
-    panel.addSubview_(tip_line)
-
     alert.setAccessoryView_(panel)
+    alert.addButtonWithTitle_(tr("menu_set_hotkey"))
+    alert.addButtonWithTitle_(tr("menu_set_mouse"))
     alert.addButtonWithTitle_(tr("save"))
-    alert.addButtonWithTitle_(tr("hotkey_settings_btn_edit_keyboard"))
-    alert.addButtonWithTitle_(tr("hotkey_settings_btn_edit_mouse"))
-    alert.addButtonWithTitle_(tr("cancel"))
+
+    # Keep Enter mapped to Save while preserving the visual button order.
+    try:
+        buttons = list(alert.buttons())
+        if len(buttons) >= 3:
+            buttons[0].setKeyEquivalent_("")
+            buttons[1].setKeyEquivalent_("")
+            buttons[2].setKeyEquivalent_("\r")
+    except Exception:
+        pass
+
     resp = alert.runModal()
     kb_on = bool(radio_keyboard.state() == NSControlStateValueOn)
     mouse_on = bool(radio_mouse.state() == NSControlStateValueOn)
@@ -580,11 +562,11 @@ def ui_hotkey_settings_action(
         selected_mode = mode_value
 
     if resp == NSAlertFirstButtonReturn:
-        return "save", selected_mode
-    if resp == NSAlertFirstButtonReturn + 1:
         return "set_keyboard", selected_mode
-    if resp == NSAlertFirstButtonReturn + 2:
+    if resp == NSAlertFirstButtonReturn + 1:
         return "set_mouse", selected_mode
+    if resp == NSAlertFirstButtonReturn + 2:
+        return "save", selected_mode
     return "cancel", selected_mode
 
 
