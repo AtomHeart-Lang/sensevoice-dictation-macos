@@ -299,6 +299,8 @@ Notes:
 - For first-time permission enrollment, launch by double-clicking `~/Applications/FunASR Dictation.app` (or the Desktop shortcut), not `./start_app.sh`.
 - If launch from Terminal works but launcher fails, re-create launcher and re-check permissions.
 - Desktop shortcut points to the same app in `~/Applications` to avoid duplicate TCC rows.
+- If `open -a "FunASR Dictation"` cannot find the app on first install, run:
+  - `open "$HOME/Applications/FunASR Dictation.app"`
 - If you still see old `SenseVoice Dictation` rows in Privacy settings, reset old entries once:
   - `tccutil reset Accessibility com.lee.sensevoice.dictation.launcher`
   - `tccutil reset ListenEvent com.lee.sensevoice.dictation.launcher`

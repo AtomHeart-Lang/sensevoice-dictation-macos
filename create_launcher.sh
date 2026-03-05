@@ -113,6 +113,14 @@ if [[ -f "$ICON_SRC" ]]; then
 fi
 
 codesign --force --deep --sign - "$APP_BUNDLE" >/dev/null 2>&1 || true
+
+# Register app with LaunchServices to make `open -a "FunASR Dictation"`
+# and `tccutil reset ... <bundle-id>` available immediately after creation.
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+if [[ -x "$LSREGISTER" ]]; then
+  "$LSREGISTER" -f "$APP_BUNDLE" >/dev/null 2>&1 || true
+fi
+
 ln -s "$APP_BUNDLE" "$DESKTOP_APP"
 
 echo "[OK] Launcher app created: $APP_BUNDLE"
