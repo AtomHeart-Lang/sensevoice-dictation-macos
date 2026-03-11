@@ -4,7 +4,7 @@ set -euo pipefail
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="FunASR Dictation"
 LEGACY_APP_NAME="SenseVoice Dictation"
-APP_VERSION="2.0.1"
+APP_VERSION="2.0.2"
 APP_BUNDLE="$HOME/Applications/$APP_NAME.app"
 DESKTOP_APP="$HOME/Desktop/$APP_NAME.app"
 LEGACY_APP_BUNDLE="$HOME/Applications/$LEGACY_APP_NAME.app"

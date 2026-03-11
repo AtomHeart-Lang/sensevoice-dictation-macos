@@ -56,7 +56,7 @@ DMG 安装器面向普通用户：
 产物：
 
 ```bash
-./funasr-dictation-installer-2.0.1.dmg
+./funasr-dictation-installer-2.0.2.dmg
 ```
 
 打开 DMG 后，双击 `Install FunASR Dictation.app` 即可。安装器会打开终端，下载独立 Python runtime、安装依赖、下载最新模型，然后基于本项目稳定的 TCC 身份重建最终启动器。

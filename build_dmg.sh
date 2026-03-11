@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="FunASR Dictation"
-APP_VERSION="2.0.1"
+APP_VERSION="2.0.2"
 INSTALLER_APP_NAME="Install FunASR Dictation.app"
 DMG_NAME="funasr-dictation-installer-${APP_VERSION}.dmg"
 WORK_DIR="$(mktemp -d /tmp/funasr-dmg.XXXXXX)"
@@ -101,7 +101,18 @@ cat > "$INSTALLER_APP/Contents/MacOS/InstallFunASRDictation" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 SELF_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-open -a Terminal "$SELF_DIR/Resources/install_from_dmg.command"
+SCRIPT_PATH="$SELF_DIR/Resources/install_from_dmg.command"
+
+if open -b com.apple.Terminal "$SCRIPT_PATH" >/dev/null 2>&1; then
+  exit 0
+fi
+
+osascript <<OSA >/dev/null 2>&1
+tell application id "com.apple.Terminal"
+  activate
+  do script quoted form of "$SCRIPT_PATH"
+end tell
+OSA
 SCRIPT
 chmod +x "$INSTALLER_APP/Contents/MacOS/InstallFunASRDictation"
 

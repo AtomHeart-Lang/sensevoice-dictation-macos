@@ -2,7 +2,7 @@
 set -euo pipefail
 
 APP_NAME="Uninstall FunASR Dictation"
-APP_VERSION="2.0.1"
+APP_VERSION="2.0.2"
 APP_BUNDLE="$HOME/Applications/$APP_NAME.app"
 APP_SUPPORT_DIR="$HOME/Library/Application Support/SenseVoiceDictation"
 RUNTIME_PATH_FILE="$APP_SUPPORT_DIR/runtime_app_dir.txt"
@@ -90,7 +90,16 @@ cd "$runtime_dir"
 rm -f "$tmp_script"
 EOF
 
-open -a Terminal "$tmp_script"
+if open -b com.apple.Terminal "$tmp_script" >/dev/null 2>&1; then
+  exit 0
+fi
+
+osascript <<OSA
+tell application id "com.apple.Terminal"
+  activate
+  do script quoted form of "$tmp_script"
+end tell
+OSA
 SCRIPT
 chmod +x "$APP_BUNDLE/Contents/MacOS/FunASRUninstaller"
 
