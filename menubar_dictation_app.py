@@ -29,6 +29,8 @@ from AppKit import (
     NSBezelBorder,
     NSButton,
     NSControlStateValueOn,
+    NSColor,
+    NSFont,
     NSImage,
     NSImageView,
     NSMakeRect,
@@ -48,6 +50,7 @@ from AppKit import (
 )
 from Foundation import NSBundle, NSDate, NSLocale, NSRunLoop
 from pynput import keyboard, mouse
+from model_config_layout import build_model_config_sections
 
 try:
     import tomllib
@@ -201,6 +204,9 @@ I18N = {
         "zh": "推荐：语言=auto，数字/日期规范化=开，长停顿合并=关；专有词写入高频词。",
         "en": "Recommended: language=auto, normalize numbers/dates=ON, merge long pauses=OFF; add domain words in Hot Words.",
     },
+    "model_config_section_core": {"zh": "基础输入", "en": "Input & Timing"},
+    "model_config_section_text": {"zh": "文本处理", "en": "Text Processing"},
+    "model_config_section_hotwords": {"zh": "高频词库", "en": "Hot Words"},
     "model_config_field_language": {"zh": "识别语言", "en": "Recognition Language"},
     "model_config_field_sample_rate": {"zh": "采样率 (Hz)", "en": "Sample Rate (Hz)"},
     "model_config_field_sample_rate_help": {
@@ -894,79 +900,171 @@ def ui_edit_model_config(current: CoreConfig) -> Optional[CoreConfig]:
         alert.addButtonWithTitle_(tr("save"))
         alert.addButtonWithTitle_(tr("cancel"))
 
-        panel = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 450, 540))
+        sections = build_model_config_sections()
+        panel_w = 500
+        panel_h = 676
+        card_x = 12
+        card_w = panel_w - 24
+        section_heights = {
+            "core": 284,
+            "text": 214,
+            "hotwords": 150,
+        }
+        panel = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, panel_w, panel_h))
 
-        def make_label(y: float, text: str):
-            label = NSTextField.alloc().initWithFrame_(NSMakeRect(10, y, 160, 22))
+        primary_text = NSColor.labelColor()
+        secondary_text = NSColor.secondaryLabelColor()
+        section_text = NSColor.colorWithCalibratedRed_green_blue_alpha_(0.45, 0.71, 1.0, 1.0)
+        card_fill = NSColor.colorWithCalibratedWhite_alpha_(1.0, 0.07)
+        card_border = NSColor.colorWithCalibratedWhite_alpha_(1.0, 0.08)
+
+        def make_text(frame, text: str, font, color=None):
+            label = NSTextField.alloc().initWithFrame_(frame)
             label.setEditable_(False)
             label.setBezeled_(False)
             label.setDrawsBackground_(False)
             label.setSelectable_(False)
+            label.setFont_(font)
+            label.setTextColor_(color or primary_text)
             label.setStringValue_(text)
-            panel.addSubview_(label)
             return label
 
-        def make_input(y: float, value: str):
-            field = NSTextField.alloc().initWithFrame_(NSMakeRect(170, y, 270, 24))
+        def make_wrapped_text(frame, text: str, font, color=None):
+            label = make_text(frame, text, font, color=color)
+            label.setLineBreakMode_(0)
+            cell = label.cell()
+            if cell is not None:
+                cell.setWraps_(True)
+            return label
+
+        def make_card(y: float, height: float, title: str):
+            card = NSView.alloc().initWithFrame_(NSMakeRect(card_x, y, card_w, height))
+            card.setWantsLayer_(True)
+            layer = card.layer()
+            if layer is not None:
+                layer.setCornerRadius_(16.0)
+                layer.setBackgroundColor_(card_fill.CGColor())
+                layer.setBorderWidth_(1.0)
+                layer.setBorderColor_(card_border.CGColor())
+            title_label = make_text(
+                NSMakeRect(16, height - 30, card_w - 32, 18),
+                title,
+                NSFont.boldSystemFontOfSize_(12),
+                color=section_text,
+            )
+            card.addSubview_(title_label)
+            panel.addSubview_(card)
+            return card
+
+        def make_input(card, x: float, y: float, width: float, value: str):
+            field = NSTextField.alloc().initWithFrame_(NSMakeRect(x, y, width, 28))
+            field.setFont_(NSFont.boldSystemFontOfSize_(14))
             field.setStringValue_(value)
-            panel.addSubview_(field)
+            card.addSubview_(field)
             return field
 
-        def make_check(y: float, text: str, value: bool):
-            box = NSButton.alloc().initWithFrame_(NSMakeRect(10, y, 430, 22))
+        def make_check(card, x: float, y: float, width: float, text: str, value: bool):
+            box = NSButton.alloc().initWithFrame_(NSMakeRect(x, y, width, 24))
             box.setButtonType_(NSSwitchButton)
             box.setTitle_(text)
+            box.setFont_(NSFont.boldSystemFontOfSize_(13))
             box.setState_(NSControlStateValueOn if value else 0)
-            panel.addSubview_(box)
+            card.addSubview_(box)
             return box
 
-        def make_plain_text(y: float, text: str):
-            label = NSTextField.alloc().initWithFrame_(NSMakeRect(10, y, 430, 18))
-            label.setEditable_(False)
-            label.setBezeled_(False)
-            label.setDrawsBackground_(False)
-            label.setSelectable_(False)
-            label.setStringValue_(text)
-            panel.addSubview_(label)
-            return label
-
-        def make_multiline_input(y: float, value: str, height: float = 88):
-            scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(170, y, 270, height))
+        def make_multiline_input(card, x: float, y: float, width: float, value: str, height: float):
+            scroll = NSScrollView.alloc().initWithFrame_(NSMakeRect(x, y, width, height))
             scroll.setBorderType_(NSBezelBorder)
             scroll.setHasVerticalScroller_(True)
             scroll.setHasHorizontalScroller_(False)
-            text_view = NSTextView.alloc().initWithFrame_(NSMakeRect(0, 0, 270, height))
+            text_view = NSTextView.alloc().initWithFrame_(NSMakeRect(0, 0, width, height))
+            text_view.setFont_(NSFont.systemFontOfSize_(13))
             text_view.setString_((value or "").replace(", ", "\n"))
             scroll.setDocumentView_(text_view)
-            panel.addSubview_(scroll)
+            card.addSubview_(scroll)
             return text_view
 
-        make_label(488, tr("model_config_field_language"))
-        language_field = make_input(486, state["language"])
-        make_label(456, tr("model_config_field_sample_rate"))
-        sample_rate_field = make_input(454, state["sample_rate"])
-        make_plain_text(436, tr("model_config_field_sample_rate_help"))
-        make_label(408, tr("model_config_field_channels"))
-        channels_field = make_input(406, state["channels"])
-        make_plain_text(388, tr("model_config_field_channels_help"))
-        make_label(360, tr("model_config_field_paste_delay"))
-        paste_delay_field = make_input(358, state["paste_delay_ms"])
-        make_plain_text(340, tr("model_config_field_paste_delay_help"))
+        control_map = {}
+        top_y = panel_h - 12
+        for section in sections:
+            section_h = section_heights[section.key]
+            top_y -= section_h
+            card = make_card(top_y, section_h, tr(section.title_key))
+            cursor_y = section_h - 70
 
-        make_label(312, tr("model_config_field_idle_unload"))
-        idle_unload_field = make_input(310, state["idle_unload_seconds"])
-        make_plain_text(292, tr("model_config_field_idle_unload_help"))
+            if section.key == "core":
+                label_w = 150
+                field_x = 176
+                field_w = card_w - field_x - 16
+                for item in section.items:
+                    title = make_text(
+                        NSMakeRect(16, cursor_y + 8, label_w, 18),
+                        tr(item.label_key),
+                        NSFont.boldSystemFontOfSize_(14),
+                    )
+                    card.addSubview_(title)
+                    field = make_input(card, field_x, cursor_y, field_w, state[item.key])
+                    control_map[item.key] = field
+                    cursor_y -= 38
+                    if item.help_key:
+                        help_label = make_wrapped_text(
+                            NSMakeRect(16, cursor_y, card_w - 32, 24),
+                            tr(item.help_key),
+                            NSFont.systemFontOfSize_(11),
+                            color=secondary_text,
+                        )
+                        card.addSubview_(help_label)
+                        cursor_y -= 30
 
-        enable_beep_box = make_check(264, tr("model_config_opt_beep"), state["enable_beep"])
-        use_itn_box = make_check(236, tr("model_config_opt_itn"), state["use_itn"])
-        make_plain_text(218, tr("model_config_opt_itn_desc"))
-        merge_vad_box = make_check(190, tr("model_config_opt_merge_vad"), state["merge_vad"])
-        make_plain_text(172, tr("model_config_opt_merge_vad_desc"))
-        remove_emoji_box = make_check(146, tr("model_config_opt_remove_emoji"), state["remove_emoji"])
+            elif section.key == "text":
+                for item in section.items:
+                    box = make_check(card, 14, cursor_y, card_w - 28, tr(item.label_key), state[item.key])
+                    control_map[item.key] = box
+                    cursor_y -= 30
+                    if item.help_key:
+                        help_label = make_wrapped_text(
+                            NSMakeRect(44, cursor_y, card_w - 60, 28),
+                            tr(item.help_key),
+                            NSFont.systemFontOfSize_(11),
+                            color=secondary_text,
+                        )
+                        card.addSubview_(help_label)
+                        cursor_y -= 34
+                    else:
+                        cursor_y -= 12
 
-        make_label(116, tr("model_config_field_hotwords"))
-        make_plain_text(98, tr("model_config_field_hotwords_help"))
-        hotwords_field = make_multiline_input(8, state["hotwords"], 84)
+            elif section.key == "hotwords":
+                item = section.items[0]
+                title = make_text(
+                    NSMakeRect(16, cursor_y + 6, card_w - 32, 18),
+                    tr(item.label_key),
+                    NSFont.boldSystemFontOfSize_(14),
+                )
+                card.addSubview_(title)
+                cursor_y -= 22
+                help_label = make_wrapped_text(
+                    NSMakeRect(16, cursor_y, card_w - 32, 24),
+                    tr(item.help_key),
+                    NSFont.systemFontOfSize_(11),
+                    color=secondary_text,
+                )
+                card.addSubview_(help_label)
+                cursor_y -= 82
+                hotwords_field = make_multiline_input(card, 16, 14, card_w - 32, state["hotwords"], 72)
+                control_map["hotwords"] = hotwords_field
+
+            top_y -= 14
+
+        language_field = control_map["language"]
+        sample_rate_field = control_map["sample_rate"]
+        channels_field = control_map["channels"]
+        paste_delay_field = control_map["paste_delay_ms"]
+        idle_unload_field = control_map["idle_unload_seconds"]
+        enable_beep_box = control_map["enable_beep"]
+        use_itn_box = control_map["use_itn"]
+        merge_vad_box = control_map["merge_vad"]
+        remove_emoji_box = control_map["remove_emoji"]
+        hotwords_field = control_map["hotwords"]
 
         alert.setAccessoryView_(panel)
         resp = alert.runModal()
