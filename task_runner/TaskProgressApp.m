@@ -453,8 +453,8 @@ static NSString *SanitizeOutput(NSString *value) {
             self.secondaryActionButton.hidden = NO;
             self.secondaryActionButton.enabled = YES;
             self.statusLabel.stringValue = Localized(
-                @"安装已完成。桌面快捷方式默认不创建；如需创建，可点击下方按钮。",
-                @"Installation completed. Desktop shortcut is optional. Use the button below if you want to create it."
+                @"安装已完成。如需创建桌面快捷方式，请点击下方按钮。",
+                @"Installation completed. To create a Desktop shortcut, click the button below."
             );
         }
         [self presentPendingWarningsIfNeeded];

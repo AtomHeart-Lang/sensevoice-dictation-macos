@@ -181,6 +181,7 @@ I18N = {
     "menu_hotkey_settings": {"zh": "快捷键设置", "en": "Hotkey Settings"},
     "menu_model_config": {"zh": "模型参数设置", "en": "Model Config"},
     "menu_update_model": {"zh": "更新模型", "en": "Update Model"},
+    "menu_switch_language": {"zh": "切换语言 / Language", "en": "Switch Language / 语言"},
     "menu_auto_on": {"zh": "应用启动时自动开启听写", "en": "Enable Dictation On App Start"},
     "menu_launch_login": {"zh": "开机自动启动", "en": "Enable Launch At Login"},
     "menu_quit": {"zh": "退出应用", "en": "Quit App"},
@@ -362,6 +363,18 @@ def tr(key: str, **kwargs) -> str:
     else:
         text = item.get(APP_LANG) or item.get("en") or key
     return text.format(**kwargs) if kwargs else text
+
+
+def resolve_app_language(value: str) -> str:
+    raw = (value or "").strip().lower()
+    if raw in {"zh", "en"}:
+        return raw
+    return _detect_app_language()
+
+
+def set_app_language(value: str) -> None:
+    global APP_LANG
+    APP_LANG = resolve_app_language(value)
 
 
 def localized_status(status: str) -> str:
@@ -632,39 +645,39 @@ def ui_hotkey_settings_action(
     sections = build_hotkey_settings_sections()
     actions = build_hotkey_settings_actions()
 
-    panel_w = 332
-    panel_h = 188
+    panel_w = 304
+    panel_h = 180
     panel = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, panel_w, panel_h))
 
-    mode_card = _make_dialog_card(panel, 10, 108, panel_w - 20, 70, tr(sections[0].title_key))
+    mode_card = _make_dialog_card(panel, 10, 102, panel_w - 20, 68, tr(sections[0].title_key))
 
-    radio_keyboard = NSButton.alloc().initWithFrame_(NSMakeRect(54, 20, 88, 20))
+    radio_keyboard = NSButton.alloc().initWithFrame_(NSMakeRect(42, 18, 80, 20))
     radio_keyboard.setButtonType_(NSRadioButton)
     radio_keyboard.setTitle_(tr("mode_keyboard"))
     radio_keyboard.setState_(NSControlStateValueOn if mode_value == "keyboard" else 0)
     mode_card.addSubview_(radio_keyboard)
 
-    radio_mouse = NSButton.alloc().initWithFrame_(NSMakeRect(186, 20, 88, 20))
+    radio_mouse = NSButton.alloc().initWithFrame_(NSMakeRect(164, 18, 80, 20))
     radio_mouse.setButtonType_(NSRadioButton)
     radio_mouse.setTitle_(tr("mode_mouse"))
     radio_mouse.setState_(NSControlStateValueOn if mode_value == "mouse" else 0)
     mode_card.addSubview_(radio_mouse)
 
-    current_card = _make_dialog_card(panel, 10, 12, panel_w - 20, 84, tr(sections[1].title_key))
+    current_card = _make_dialog_card(panel, 10, 12, panel_w - 20, 76, tr(sections[1].title_key))
     keyboard_line = _make_dialog_text(
-        NSMakeRect(16, 34, panel_w - 52, 18),
+        NSMakeRect(18, 32, panel_w - 56, 16),
         "",
-        NSFont.boldSystemFontOfSize_(13),
-        align=NSTextAlignmentCenter,
+        NSFont.systemFontOfSize_(13),
+        align=NSTextAlignmentLeft,
     )
     keyboard_line.setStringValue_(tr("hotkey_settings_keyboard_line", value=hotkey))
     current_card.addSubview_(keyboard_line)
 
     mouse_line = _make_dialog_text(
-        NSMakeRect(16, 14, panel_w - 52, 18),
+        NSMakeRect(18, 14, panel_w - 56, 16),
         "",
-        NSFont.boldSystemFontOfSize_(13),
-        align=NSTextAlignmentCenter,
+        NSFont.systemFontOfSize_(13),
+        align=NSTextAlignmentLeft,
     )
     mouse_line.setStringValue_(tr("hotkey_settings_mouse_line", value=mouse_value))
     current_card.addSubview_(mouse_line)
@@ -890,11 +903,12 @@ class CoreConfig:
 
 @dataclass
 class UISettings:
-    schema_version: int = 2
+    schema_version: int = 3
     trigger_mode: str = "keyboard"  # keyboard|mouse
     keyboard_hotkey: str = "<ctrl>+<alt>+<space>"
     mouse_button: str = "x1"  # middle|x1|x2|button5..button24
     enable_dictation_on_app_start: bool = True
+    app_language: str = "system"  # system|zh|en
 
 
 def load_core_config() -> CoreConfig:
@@ -1015,7 +1029,7 @@ def ui_edit_model_config(current: CoreConfig) -> Optional[CoreConfig]:
         alert.addButtonWithTitle_(tr("cancel"))
 
         sections = build_model_config_sections()
-        panel_w = 448
+        panel_w = 436
         panel_h = 676
         card_x = 12
         card_w = panel_w - 24
@@ -1107,9 +1121,9 @@ def ui_edit_model_config(current: CoreConfig) -> Optional[CoreConfig]:
             cursor_y = section_h - 70
 
             if section.key == "core":
-                label_w = 120
-                field_x = 140
-                field_w = card_w - field_x - 16
+                label_w = 124
+                field_x = 144
+                field_w = min(236, card_w - field_x - 16)
                 for item in section.items:
                     title = make_text(
                         NSMakeRect(16, cursor_y + 8, label_w, 18),
@@ -1256,13 +1270,14 @@ def load_ui_settings() -> UISettings:
 
     is_legacy = "schema_version" not in data
     settings = UISettings(
-        schema_version=int(data.get("schema_version", 2)),
+        schema_version=int(data.get("schema_version", 3)),
         trigger_mode=str(data.get("trigger_mode", "keyboard")),
         keyboard_hotkey=str(data.get("keyboard_hotkey", "<ctrl>+<alt>+<space>")),
         mouse_button=str(data.get("mouse_button", "x1")),
         enable_dictation_on_app_start=bool(
             data.get("enable_dictation_on_app_start", True if is_legacy else True)
         ),
+        app_language=str(data.get("app_language", "system")),
     )
     if is_legacy:
         settings.enable_dictation_on_app_start = True
@@ -2797,6 +2812,7 @@ class SenseVoiceMenuBarApp(rumps.App):
         )
         self.core_config = load_core_config()
         self.ui_settings = load_ui_settings()
+        set_app_language(self.ui_settings.app_language)
 
         self.current_status = "OFF"
         self.dictation_enabled = False
@@ -2824,6 +2840,7 @@ class SenseVoiceMenuBarApp(rumps.App):
         self.trigger_item = rumps.MenuItem("Trigger: keyboard <ctrl>+<alt>+<space>")
         self.auto_on_item = rumps.MenuItem("Enable Dictation On App Start")
         self.launch_login_item = rumps.MenuItem("Enable Launch At Login")
+        self.language_item = rumps.MenuItem("Switch Language / 语言")
         self.build_item = rumps.MenuItem(f'{tr("build_prefix")}: {APP_BUILD}')
 
         self.menu = [
@@ -2836,6 +2853,7 @@ class SenseVoiceMenuBarApp(rumps.App):
             "Update Model",
             self.auto_on_item,
             self.launch_login_item,
+            self.language_item,
             self.build_item,
             None,
             "Quit App",
@@ -2845,6 +2863,7 @@ class SenseVoiceMenuBarApp(rumps.App):
         self.model_config_item = self.menu["Model Config"]
         self.update_model_item = self.menu["Update Model"]
         self.quit_item = self.menu["Quit App"]
+        self.language_item = self.menu["Switch Language / 语言"]
 
         self.refresh_ui_labels()
         self._migrate_autostart_if_needed()
@@ -3010,6 +3029,7 @@ class SenseVoiceMenuBarApp(rumps.App):
         self.status_item.title = f'{tr("status_prefix")}: {localized_status(self.current_status)}'
         self.auto_on_item.title = tr("menu_auto_on")
         self.launch_login_item.title = tr("menu_launch_login")
+        self.language_item.title = tr("menu_switch_language")
         self.toggle_item.title = tr("menu_toggle")
         self.hotkey_settings_item.title = tr("menu_hotkey_settings")
         self.model_config_item.title = tr("menu_model_config")
@@ -3269,6 +3289,13 @@ class SenseVoiceMenuBarApp(rumps.App):
                 tr("launch_login_update_failed", error=exc),
                 title=tr("menu_launch_login"),
             )
+
+    @rumps.clicked("Switch Language / 语言")
+    def on_toggle_language(self, sender):
+        self.ui_settings.app_language = "en" if APP_LANG == "zh" else "zh"
+        set_app_language(self.ui_settings.app_language)
+        save_ui_settings(self.ui_settings)
+        self.refresh_ui_labels()
 
     @rumps.clicked("Quit App")
     def on_quit(self, _):
