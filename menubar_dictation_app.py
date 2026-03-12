@@ -42,6 +42,7 @@ from AppKit import (
     NSSwitchButton,
     NSTextField,
     NSTextAlignmentCenter,
+    NSTextAlignmentLeft,
     NSTextView,
     NSView,
     NSWindow,
@@ -50,6 +51,7 @@ from AppKit import (
 )
 from Foundation import NSBundle, NSDate, NSLocale, NSRunLoop
 from pynput import keyboard, mouse
+from hotkey_dialog_layout import build_hotkey_settings_actions, build_hotkey_settings_sections
 from model_config_layout import build_model_config_sections
 
 try:
@@ -293,9 +295,19 @@ I18N = {
         "zh": "当前触发方式：{mode}\n键盘快捷键：{hotkey}\n鼠标按键：{mouse}\n\n建议：先设置按键，再切换触发方式。",
         "en": "Current trigger mode: {mode}\nKeyboard hotkey: {hotkey}\nMouse button: {mouse}\n\nTip: set keys first, then choose trigger mode.",
     },
+    "hotkey_dialog_section_mode": {"zh": "触发方式", "en": "Trigger Mode"},
+    "hotkey_dialog_section_current": {"zh": "当前设置", "en": "Current Setup"},
     "hotkey_settings_mode_label": {"zh": "触发方式（单选）", "en": "Trigger Mode (single choice)"},
     "hotkey_settings_keyboard_line": {"zh": "键盘快捷键：{value}", "en": "Keyboard Hotkey: {value}"},
     "hotkey_settings_mouse_line": {"zh": "鼠标按键：{value}", "en": "Mouse Button: {value}"},
+    "hotkey_dialog_choice_hint": {
+        "zh": "推荐优先尝试自动识别；如果没识别到，再手动输入。",
+        "en": "Try capture first. If it misses your key/button, switch to manual entry.",
+    },
+    "hotkey_dialog_manual_hint": {
+        "zh": "支持先输入再保存，文本格式可参考文档中的按键列表。",
+        "en": "Type the trigger text directly, then save it in one step.",
+    },
     "hotkey_settings_tip_compact": {"zh": "建议：先编辑按键，再保存触发方式。", "en": "Tip: edit keys first, then save trigger mode."},
     "hotkey_settings_btn_edit_keyboard": {"zh": "编辑键盘", "en": "Edit Keyboard"},
     "hotkey_settings_btn_edit_mouse": {"zh": "编辑鼠标", "en": "Edit Mouse"},
@@ -439,6 +451,80 @@ def ui_alert_native(message: str, title: Optional[str] = None) -> None:
     alert.runModal()
 
 
+def _dialog_palette():
+    return {
+        "primary": NSColor.labelColor(),
+        "secondary": NSColor.secondaryLabelColor(),
+        "accent": NSColor.colorWithCalibratedRed_green_blue_alpha_(0.45, 0.71, 1.0, 1.0),
+        "card_fill": NSColor.colorWithCalibratedWhite_alpha_(1.0, 0.07),
+        "card_border": NSColor.colorWithCalibratedWhite_alpha_(1.0, 0.08),
+    }
+
+
+def _configure_alert_icon(alert, size: float = 52.0) -> None:
+    icon = _app_icon_image(rounded=True)
+    if icon is None:
+        return
+    try:
+        icon_for_alert = icon.copy()
+        if icon_for_alert is not None:
+            icon_for_alert.setSize_(NSMakeSize(size, size))
+            alert.setIcon_(icon_for_alert)
+            return
+    except Exception:
+        pass
+    alert.setIcon_(icon)
+
+
+def _make_dialog_text(
+    frame,
+    text: str,
+    font,
+    *,
+    color=None,
+    align=NSTextAlignmentLeft,
+    wrap: bool = False,
+):
+    palette = _dialog_palette()
+    label = NSTextField.alloc().initWithFrame_(frame)
+    label.setEditable_(False)
+    label.setBezeled_(False)
+    label.setDrawsBackground_(False)
+    label.setSelectable_(False)
+    label.setFont_(font)
+    label.setTextColor_(color or palette["primary"])
+    label.setAlignment_(align)
+    label.setStringValue_(text)
+    if wrap:
+        label.setLineBreakMode_(0)
+        cell = label.cell()
+        if cell is not None:
+            cell.setWraps_(True)
+    return label
+
+
+def _make_dialog_card(parent, x: float, y: float, width: float, height: float, title: Optional[str] = None):
+    palette = _dialog_palette()
+    card = NSView.alloc().initWithFrame_(NSMakeRect(x, y, width, height))
+    card.setWantsLayer_(True)
+    layer = card.layer()
+    if layer is not None:
+        layer.setCornerRadius_(16.0)
+        layer.setBackgroundColor_(palette["card_fill"].CGColor())
+        layer.setBorderWidth_(1.0)
+        layer.setBorderColor_(palette["card_border"].CGColor())
+    if title:
+        title_label = _make_dialog_text(
+            NSMakeRect(16, height - 28, width - 32, 16),
+            title,
+            NSFont.boldSystemFontOfSize_(12),
+            color=palette["accent"],
+        )
+        card.addSubview_(title_label)
+    parent.addSubview_(card)
+    return card
+
+
 def ui_prompt_text_native(
     message: str,
     title: str,
@@ -450,16 +536,32 @@ def ui_prompt_text_native(
     app.activateIgnoringOtherApps_(True)
     alert = NSAlert.alloc().init()
     alert.setMessageText_(title)
-    alert.setInformativeText_(message)
-    icon = _app_icon_image(rounded=True)
-    if icon is not None:
-        alert.setIcon_(icon)
+    alert.setInformativeText_("")
+    _configure_alert_icon(alert, size=48.0)
     alert.addButtonWithTitle_(ok_text)
     alert.addButtonWithTitle_(cancel_text)
 
-    field = NSTextField.alloc().initWithFrame_(NSMakeRect(0, 0, 360, 24))
+    panel_w = 392
+    panel_h = 118
+    panel = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, panel_w, panel_h))
+    palette = _dialog_palette()
+
+    message_label = _make_dialog_text(
+        NSMakeRect(10, 76, panel_w - 20, 34),
+        message,
+        NSFont.systemFontOfSize_(12),
+        color=palette["secondary"],
+        align=NSTextAlignmentCenter,
+        wrap=True,
+    )
+    panel.addSubview_(message_label)
+
+    field_card = _make_dialog_card(panel, 10, 10, panel_w - 20, 54)
+    field = NSTextField.alloc().initWithFrame_(NSMakeRect(16, 13, panel_w - 52, 28))
+    field.setFont_(NSFont.boldSystemFontOfSize_(14))
     field.setStringValue_(default_text)
-    alert.setAccessoryView_(field)
+    field_card.addSubview_(field)
+    alert.setAccessoryView_(panel)
 
     resp = alert.runModal()
     if resp != NSAlertFirstButtonReturn:
@@ -479,13 +581,37 @@ def ui_choice_native(
     app.activateIgnoringOtherApps_(True)
     alert = NSAlert.alloc().init()
     alert.setMessageText_(title)
-    alert.setInformativeText_(message)
-    icon = _app_icon_image(rounded=True)
-    if icon is not None:
-        alert.setIcon_(icon)
+    alert.setInformativeText_("")
+    _configure_alert_icon(alert, size=48.0)
     alert.addButtonWithTitle_(primary_text)
     alert.addButtonWithTitle_(secondary_text)
     alert.addButtonWithTitle_(cancel_text or tr("cancel"))
+
+    panel_w = 404
+    panel_h = 132
+    panel = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, panel_w, panel_h))
+    palette = _dialog_palette()
+
+    body_card = _make_dialog_card(panel, 10, 14, panel_w - 20, 106)
+    message_label = _make_dialog_text(
+        NSMakeRect(18, 36, panel_w - 56, 44),
+        message,
+        NSFont.systemFontOfSize_(12),
+        color=palette["secondary"],
+        align=NSTextAlignmentCenter,
+        wrap=True,
+    )
+    body_card.addSubview_(message_label)
+    hint_label = _make_dialog_text(
+        NSMakeRect(18, 16, panel_w - 56, 16),
+        tr("hotkey_dialog_choice_hint"),
+        NSFont.systemFontOfSize_(10),
+        color=palette["secondary"],
+        align=NSTextAlignmentCenter,
+    )
+    body_card.addSubview_(hint_label)
+    alert.setAccessoryView_(panel)
+
     resp = alert.runModal()
     if resp == NSAlertFirstButtonReturn:
         return "primary"
@@ -506,60 +632,68 @@ def ui_hotkey_settings_action(
     alert = NSAlert.alloc().init()
     alert.setMessageText_(tr("menu_hotkey_settings"))
     alert.setInformativeText_("")
-    icon = _app_icon_image(rounded=True)
-    if icon is not None:
-        icon_for_alert = icon.copy()
-        if icon_for_alert is not None:
-            icon_for_alert.setSize_(NSMakeSize(56.0, 56.0))
-            alert.setIcon_(icon_for_alert)
+    _configure_alert_icon(alert, size=50.0)
+    palette = _dialog_palette()
+    sections = build_hotkey_settings_sections()
+    actions = build_hotkey_settings_actions()
 
-    panel_w = 258
-    panel_h = 116
+    panel_w = 332
+    panel_h = 212
     panel = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, panel_w, panel_h))
 
-    mode_label = NSTextField.alloc().initWithFrame_(NSMakeRect(8, 92, panel_w - 16, 18))
-    mode_label.setEditable_(False)
-    mode_label.setBezeled_(False)
-    mode_label.setDrawsBackground_(False)
-    mode_label.setSelectable_(False)
-    mode_label.setAlignment_(NSTextAlignmentCenter)
-    mode_label.setStringValue_(tr("hotkey_settings_mode_label"))
-    panel.addSubview_(mode_label)
+    mode_card = _make_dialog_card(panel, 10, 126, panel_w - 20, 76, tr(sections[0].title_key))
+    mode_hint = _make_dialog_text(
+        NSMakeRect(16, 34, panel_w - 52, 14),
+        tr("hotkey_settings_mode_label"),
+        NSFont.systemFontOfSize_(10),
+        color=palette["secondary"],
+        align=NSTextAlignmentCenter,
+    )
+    mode_card.addSubview_(mode_hint)
 
-    radio_keyboard = NSButton.alloc().initWithFrame_(NSMakeRect(26, 68, 88, 20))
+    radio_keyboard = NSButton.alloc().initWithFrame_(NSMakeRect(54, 24, 88, 20))
     radio_keyboard.setButtonType_(NSRadioButton)
     radio_keyboard.setTitle_(tr("mode_keyboard"))
     radio_keyboard.setState_(NSControlStateValueOn if mode_value == "keyboard" else 0)
-    panel.addSubview_(radio_keyboard)
+    mode_card.addSubview_(radio_keyboard)
 
-    radio_mouse = NSButton.alloc().initWithFrame_(NSMakeRect(144, 68, 88, 20))
+    radio_mouse = NSButton.alloc().initWithFrame_(NSMakeRect(186, 24, 88, 20))
     radio_mouse.setButtonType_(NSRadioButton)
     radio_mouse.setTitle_(tr("mode_mouse"))
     radio_mouse.setState_(NSControlStateValueOn if mode_value == "mouse" else 0)
-    panel.addSubview_(radio_mouse)
+    mode_card.addSubview_(radio_mouse)
 
-    keyboard_line = NSTextField.alloc().initWithFrame_(NSMakeRect(8, 42, panel_w - 16, 18))
-    keyboard_line.setEditable_(False)
-    keyboard_line.setBezeled_(False)
-    keyboard_line.setDrawsBackground_(False)
-    keyboard_line.setSelectable_(False)
-    keyboard_line.setAlignment_(NSTextAlignmentCenter)
+    current_card = _make_dialog_card(panel, 10, 12, panel_w - 20, 102, tr(sections[1].title_key))
+    keyboard_line = _make_dialog_text(
+        NSMakeRect(16, 36, panel_w - 52, 22),
+        "",
+        NSFont.boldSystemFontOfSize_(15),
+        align=NSTextAlignmentCenter,
+    )
     keyboard_line.setStringValue_(tr("hotkey_settings_keyboard_line", value=hotkey))
-    panel.addSubview_(keyboard_line)
+    current_card.addSubview_(keyboard_line)
 
-    mouse_line = NSTextField.alloc().initWithFrame_(NSMakeRect(8, 20, panel_w - 16, 18))
-    mouse_line.setEditable_(False)
-    mouse_line.setBezeled_(False)
-    mouse_line.setDrawsBackground_(False)
-    mouse_line.setSelectable_(False)
-    mouse_line.setAlignment_(NSTextAlignmentCenter)
+    mouse_line = _make_dialog_text(
+        NSMakeRect(16, 14, panel_w - 52, 18),
+        "",
+        NSFont.boldSystemFontOfSize_(15),
+        align=NSTextAlignmentCenter,
+    )
     mouse_line.setStringValue_(tr("hotkey_settings_mouse_line", value=mouse_value))
-    panel.addSubview_(mouse_line)
+    current_card.addSubview_(mouse_line)
+
+    current_hint = _make_dialog_text(
+        NSMakeRect(16, 60, panel_w - 52, 12),
+        tr("hotkey_dialog_manual_hint"),
+        NSFont.systemFontOfSize_(10),
+        color=palette["secondary"],
+        align=NSTextAlignmentCenter,
+    )
+    current_card.addSubview_(current_hint)
 
     alert.setAccessoryView_(panel)
-    alert.addButtonWithTitle_(tr("menu_set_hotkey"))
-    alert.addButtonWithTitle_(tr("menu_set_mouse"))
-    alert.addButtonWithTitle_(tr("save"))
+    for action in actions:
+        alert.addButtonWithTitle_(tr(action.label_key))
 
     # Keep Enter mapped to Save while preserving the visual button order.
     try:
@@ -619,7 +753,7 @@ def _show_capture_progress_window(title: str, message: str):
     app = NSApplication.sharedApplication()
     app.activateIgnoringOtherApps_(True)
     window = NSWindow.alloc().initWithContentRect_styleMask_backing_defer_(
-        NSMakeRect(0, 0, 420, 150),
+        NSMakeRect(0, 0, 372, 182),
         NSWindowStyleMaskTitled,
         NSBackingStoreBuffered,
         False,
@@ -628,39 +762,43 @@ def _show_capture_progress_window(title: str, message: str):
     window.center()
     window.setReleasedWhenClosed_(False)
 
-    content = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 420, 150))
+    content = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, 372, 182))
     window.setContentView_(content)
+    palette = _dialog_palette()
+    card = _make_dialog_card(content, 12, 12, 348, 156, None)
 
     icon = _app_icon_image(rounded=True)
     if icon is not None:
-        icon_view = NSImageView.alloc().initWithFrame_(NSMakeRect(20, 84, 46, 46))
+        icon_view = NSImageView.alloc().initWithFrame_(NSMakeRect(22, 90, 42, 42))
         icon_view.setImage_(icon)
-        content.addSubview_(icon_view)
+        card.addSubview_(icon_view)
 
-    msg = NSTextField.alloc().initWithFrame_(NSMakeRect(80, 88, 320, 44))
-    msg.setEditable_(False)
-    msg.setBezeled_(False)
-    msg.setDrawsBackground_(False)
-    msg.setSelectable_(False)
-    msg.setStringValue_(message)
-    content.addSubview_(msg)
+    msg = _make_dialog_text(
+        NSMakeRect(78, 98, 244, 36),
+        message,
+        NSFont.boldSystemFontOfSize_(13),
+        align=NSTextAlignmentLeft,
+        wrap=True,
+    )
+    card.addSubview_(msg)
 
-    spinner = NSProgressIndicator.alloc().initWithFrame_(NSMakeRect(80, 52, 24, 24))
+    spinner = NSProgressIndicator.alloc().initWithFrame_(NSMakeRect(78, 52, 22, 22))
     spinner.setIndeterminate_(True)
     try:
         spinner.setStyle_(NSProgressIndicatorStyleSpinning)
     except Exception:
         pass
     spinner.startAnimation_(None)
-    content.addSubview_(spinner)
+    card.addSubview_(spinner)
 
-    hint = NSTextField.alloc().initWithFrame_(NSMakeRect(112, 54, 288, 20))
-    hint.setEditable_(False)
-    hint.setBezeled_(False)
-    hint.setDrawsBackground_(False)
-    hint.setSelectable_(False)
-    hint.setStringValue_(tr("capture_window_hint"))
-    content.addSubview_(hint)
+    hint = _make_dialog_text(
+        NSMakeRect(108, 54, 214, 18),
+        tr("capture_window_hint"),
+        NSFont.systemFontOfSize_(11),
+        color=palette["secondary"],
+        wrap=False,
+    )
+    card.addSubview_(hint)
 
     window.makeKeyAndOrderFront_(None)
     return window
