@@ -23,7 +23,7 @@ FunASR Dictation 是一个基于 [Fun-ASR-Nano-2512](https://github.com/FunAudio
 - 支持在菜单中开关“应用启动时自动开启听写”（`Enable Dictation On App Start`）
 - 在 `~/Applications` 生成可点击启动器
 - 在 `~/Applications` 生成图形化卸载器
-- 桌面快捷方式是同一应用的符号链接（避免重复权限条目）
+- 桌面快捷方式是可选功能，且会指向同一应用的符号链接（避免重复权限条目）
 - 支持打包为 DMG，方便普通用户安装（安装时下载独立 Python、依赖和最新模型）
 - 安装与卸载使用原生 macOS 进度窗口，不再弹出终端
 - 一键卸载并清理环境
@@ -57,12 +57,18 @@ DMG 安装器面向普通用户：
 产物：
 
 ```bash
-./funasr-dictation-installer-2.1.2.dmg
+./funasr-dictation-installer-2.1.4.dmg
 ```
 
 打开 DMG 后，双击 `Install FunASR Dictation.app` 即可。安装器会弹出原生 macOS 安装窗口，实时显示进度与日志，下载独立 Python runtime、安装依赖、下载最新模型，然后基于本项目稳定的 TCC 身份重建最终启动器。
 
-安装完成后，安装器不再自动拉起应用。请在安装窗口点击 `打开应用`，或手动双击 `~/Applications/FunASR Dictation.app`。这样可以避免在安装器窗口仍处于前台时触发系统权限弹窗，从而绕开 macOS “隐私与安全性”扩展偶发崩溃的问题。
+安装完成后：
+- 安装器不再自动拉起应用
+- 你可以按需点击 `创建桌面快捷方式`
+- 安装器会提示：桌面快捷方式在卸载时，macOS 可能要求你手动删除
+- 然后再点击 `打开应用`，或手动双击 `~/Applications/FunASR Dictation.app`
+
+这样可以避免在安装器窗口仍处于前台时触发系统权限弹窗，从而绕开 macOS “隐私与安全性”扩展偶发崩溃的问题。
 
 ## 安装
 
@@ -75,7 +81,8 @@ DMG 安装器面向普通用户：
 2. 安装 Python 依赖（`requirements.txt`）
 3. 若不存在则从 `config.example.toml` 生成 `config.toml`
 4. 预下载 Fun-ASR-Nano-2512 + VAD 模型
-5. 创建 `~/Applications` 启动器和桌面符号链接
+5. 创建 `~/Applications` 启动器
+6. 桌面快捷方式默认不创建，可稍后执行 `./create_desktop_shortcut.sh` 按需创建
 6. 若缺少 Python 3.11+，并且系统有 Homebrew，则自动安装 Python
 
 安装参数：
@@ -89,7 +96,7 @@ DMG 安装器面向普通用户：
 ./start_app.sh
 ```
 
-也可以在执行 `./create_launcher.sh` 后，直接双击应用/桌面图标启动。
+也可以在执行 `./create_launcher.sh` 后直接双击应用图标启动；如果还需要桌面快捷方式，再执行 `./create_desktop_shortcut.sh`。
 
 如果使用 DMG 安装，请直接双击 DMG 内的 `Install FunASR Dictation.app`，不需要手动执行 `install.sh`。
 
@@ -231,7 +238,8 @@ batch_size_s = 0
 - `start_app.sh`：启动菜单栏应用
 - `enable_autostart.sh`：启用 LaunchAgent 开机自启
 - `disable_autostart.sh`：关闭 LaunchAgent 开机自启
-- `create_launcher.sh`：创建 Applications 启动器 + 桌面符号链接
+- `create_launcher.sh`：创建 Applications 启动器
+- `create_desktop_shortcut.sh`：创建可选的桌面快捷方式符号链接
 - `create_uninstaller.sh`：创建 Applications 图形化卸载器
 - `launch_from_desktop.sh`：桌面启动入口（静默后台启动）
 - `remove_launcher.sh`：删除 Applications 启动器与桌面快捷方式
@@ -256,6 +264,10 @@ batch_size_s = 0
 - Applications/桌面启动器与图形化卸载器
 - `~/Library/Application Support/FunASRDictation` 下的 DMG 安装运行目录
 - 已知应用标识的 TCC 权限项（尽力重置）
+
+桌面快捷方式删除是 best-effort：
+- 如果 macOS 阻止自动删除桌面快捷方式，卸载仍会继续完成
+- 卸载器会明确提醒你手动从桌面删除该快捷方式
 
 也支持连源码目录或 DMG 运行目录一起删除：
 
@@ -329,10 +341,10 @@ batch_size_s = 0
 - 输入监控（Input Monitoring）
 
 说明：
-- 首次授权时请务必双击 `~/Applications/FunASR Dictation.app`（或桌面快捷方式）启动，不要用 `./start_app.sh`。
+- 首次授权时请务必双击 `~/Applications/FunASR Dictation.app`（如果你创建了桌面快捷方式，也可双击它）启动，不要用 `./start_app.sh`。
 - 启动器会在首次启动时主动请求麦克风/辅助功能/输入监控权限（应看到系统权限弹窗）。
 - 若终端启动可用但启动器不可用，请重建启动器并重新核对权限。
-- 桌面快捷方式指向 `~/Applications` 同一个应用，避免 TCC 列表重复。
+- 如果创建了桌面快捷方式，它会指向 `~/Applications` 同一个应用，避免 TCC 列表重复。
 - 如果首次安装后 `open -a "FunASR Dictation"` 提示找不到应用，请先执行：
   - `open "$HOME/Applications/FunASR Dictation.app"`
 - 录音设备完全跟随 macOS 系统默认输入设备（程序内不做自动切换）。

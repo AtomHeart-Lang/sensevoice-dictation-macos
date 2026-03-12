@@ -23,7 +23,7 @@ Compared with built-in dictation or many generic tools, this app focuses on:
 - Dictation-on-app-start toggle from menu (`Enable Dictation On App Start`)
 - Clickable launcher app in `~/Applications`
 - Graphical uninstaller app in `~/Applications`
-- Desktop shortcut as a symlink to the same app (prevents duplicate permission entries)
+- Optional Desktop shortcut as a symlink to the same app (prevents duplicate permission entries)
 - DMG packaging flow for non-technical users (installer downloads standalone Python, dependencies, and latest model during setup)
 - Native installer/uninstaller progress windows on macOS (no Terminal window required)
 - One-command uninstall and cleanup
@@ -57,12 +57,18 @@ To build the installer DMG locally:
 Output:
 
 ```bash
-./funasr-dictation-installer-2.1.2.dmg
+./funasr-dictation-installer-2.1.4.dmg
 ```
 
 Inside the DMG, double-click `Install FunASR Dictation.app`. A native macOS installer window appears, shows live progress/log output, downloads a standalone Python runtime, installs dependencies, downloads the latest model, then rebuilds the final launcher app with the stable TCC identity used by this project.
 
-When installation finishes, the installer no longer auto-launches the app. Click `Open App` in the installer window, or launch `~/Applications/FunASR Dictation.app` manually. This avoids a macOS Privacy & Security extension crash that can happen if permission prompts are triggered while the installer window is still frontmost.
+When installation finishes:
+- the installer no longer auto-launches the app
+- you can optionally click `Create Desktop Shortcut`
+- the installer warns that macOS may require manual deletion of the Desktop shortcut during uninstall
+- then click `Open App`, or launch `~/Applications/FunASR Dictation.app` manually
+
+This avoids a macOS Privacy & Security extension crash that can happen if permission prompts are triggered while the installer window is still frontmost.
 
 ## Installation
 
@@ -75,7 +81,8 @@ Default installer behavior:
 2. install Python dependencies (`requirements.txt`)
 3. create `config.toml` from `config.example.toml` if missing
 4. pre-download Fun-ASR-Nano-2512 + VAD models
-5. create launcher app in `~/Applications` and Desktop shortcut symlink
+5. create launcher app in `~/Applications`
+6. Desktop shortcut is optional and can be created later with `./create_desktop_shortcut.sh`
 6. if Python 3.11+ is missing, auto-install Python via Homebrew (when `brew` is available)
 
 Installer options:
@@ -89,7 +96,7 @@ Installer options:
 ./start_app.sh
 ```
 
-Or run from desktop/application icon after `./create_launcher.sh`.
+Or run from the application icon after `./create_launcher.sh`. If you want a Desktop shortcut too, run `./create_desktop_shortcut.sh`.
 
 For DMG installs, launch by double-clicking `Install FunASR Dictation.app` inside the DMG instead of running `install.sh` manually.
 
@@ -231,7 +238,8 @@ This file survives app restarts and macOS reboots.
 - `start_app.sh`: start menubar app
 - `enable_autostart.sh`: enable LaunchAgent autostart
 - `disable_autostart.sh`: disable LaunchAgent autostart
-- `create_launcher.sh`: create clickable `.app` launcher in Applications + Desktop symlink
+- `create_launcher.sh`: create clickable `.app` launcher in Applications
+- `create_desktop_shortcut.sh`: create the optional Desktop shortcut symlink
 - `create_uninstaller.sh`: create graphical uninstaller app in Applications
 - `launch_from_desktop.sh`: desktop launcher entrypoint (silent background startup)
 - `remove_launcher.sh`: remove launcher app + Desktop shortcut symlink
@@ -256,6 +264,10 @@ This file survives app restarts and macOS reboots.
 - launcher / uninstaller apps in Applications/Desktop
 - DMG-installed runtime directory under `~/Library/Application Support/FunASRDictation`
 - TCC entries for known app identifiers (best effort reset)
+
+Desktop shortcut removal is best-effort:
+- if macOS blocks automatic removal from Desktop, uninstall still completes
+- the uninstaller shows a warning telling you to delete the Desktop shortcut manually
 
 Also supports full source or DMG runtime removal:
 
@@ -329,10 +341,10 @@ Grant permissions to the actual running process chain:
 - Input Monitoring
 
 Notes:
-- For first-time permission enrollment, launch by double-clicking `~/Applications/FunASR Dictation.app` (or the Desktop shortcut), not `./start_app.sh`.
+- For first-time permission enrollment, launch by double-clicking `~/Applications/FunASR Dictation.app` (or the optional Desktop shortcut if you created one), not `./start_app.sh`.
 - Launcher now requests Microphone/Accessibility/Input-Monitoring at app startup (you should see system permission prompts on first run).
 - If launch from Terminal works but launcher fails, re-create launcher and re-check permissions.
-- Desktop shortcut points to the same app in `~/Applications` to avoid duplicate TCC rows.
+- If created, the Desktop shortcut points to the same app in `~/Applications` to avoid duplicate TCC rows.
 - If `open -a "FunASR Dictation"` cannot find the app on first install, run:
   - `open "$HOME/Applications/FunASR Dictation.app"`
 - Recording uses the macOS system default input device (no in-app auto device switching).

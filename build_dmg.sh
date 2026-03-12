@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="FunASR Dictation"
-APP_VERSION="2.1.2"
+APP_VERSION="2.1.4"
 INSTALLER_APP_NAME="Install FunASR Dictation.app"
 DMG_NAME="funasr-dictation-installer-${APP_VERSION}.dmg"
 WORK_DIR="$(mktemp -d /tmp/funasr-dmg.XXXXXX)"
@@ -42,6 +42,7 @@ chmod +x \
   "$PAYLOAD_APP_DIR/install.sh" \
   "$PAYLOAD_APP_DIR/start_app.sh" \
   "$PAYLOAD_APP_DIR/create_launcher.sh" \
+  "$PAYLOAD_APP_DIR/create_desktop_shortcut.sh" \
   "$PAYLOAD_APP_DIR/create_uninstaller.sh" \
   "$PAYLOAD_APP_DIR/launch_from_desktop.sh" \
   "$PAYLOAD_APP_DIR/remove_launcher.sh" \
@@ -95,6 +96,8 @@ cat > "$INSTALLER_APP/Contents/Resources/TaskRunnerConfig.plist" <<PLIST
   <false/>
   <key>ShowSuccessOpenButton</key>
   <true/>
+  <key>ShowDesktopShortcutButton</key>
+  <true/>
 </dict>
 </plist>
 PLIST
@@ -133,8 +136,10 @@ FunASR Dictation macOS Installer
 
 1. Double-click "Install FunASR Dictation.app"
 2. A native macOS installer window will show live progress while the standalone Python runtime, Python dependencies, and the latest model are downloaded
-3. When installation completes, click "Open App" in the installer window
-4. Grant Microphone / Accessibility / Input Monitoring when FunASR Dictation first launches
+3. When installation completes, optionally click "Create Desktop Shortcut" in the installer window
+4. Desktop shortcuts may need to be deleted manually during uninstall, depending on macOS permissions
+5. Click "Open App" in the installer window
+6. Grant Microphone / Accessibility / Input Monitoring when FunASR Dictation first launches
 
 The DMG does not include the model cache.
 No Homebrew or preinstalled Python is required on the target Mac.

@@ -15,11 +15,31 @@ APP_SUPPORT_UI_SETTINGS="$AUTOSTART_DIR/ui_settings.json"
 APP_SUPPORT_UI_SETTINGS_TMP="$AUTOSTART_DIR/ui_settings.json.tmp"
 APP_SUPPORT_UI_SETTINGS_BROKEN="$AUTOSTART_DIR/ui_settings.json.broken"
 DELETE_DIR=0
+WARNINGS=()
 
 emit_progress() {
   local percent="$1"
   shift
   echo "[Progress] $percent $*"
+}
+
+warn() {
+  local message="$1"
+  WARNINGS+=("$message")
+  echo "[WARN] $message"
+}
+
+remove_path_best_effort() {
+  local path="$1"
+  local warning_message="$2"
+  if [[ ! -e "$path" && ! -L "$path" ]]; then
+    return 0
+  fi
+  if rm -rf "$path" >/dev/null 2>&1; then
+    echo "  - removed $path"
+    return 0
+  fi
+  warn "$warning_message"
 }
 
 for arg in "$@"; do
@@ -79,8 +99,11 @@ pkill -f "[s]tart_menubar_app.sh" >/dev/null 2>&1 || true
 pkill -f "[m]ain.py" >/dev/null 2>&1 || true
 emit_progress 30 "Removing launcher apps"
 echo "[Step] Remove launcher apps"
-rm -rf "$APP_BUNDLE" "$UNINSTALLER_APP" "$DESKTOP_APP"
-rm -rf "$LEGACY_APP_BUNDLE" "$LEGACY_DESKTOP_APP"
+remove_path_best_effort "$APP_BUNDLE" "Could not remove launcher app automatically: $APP_BUNDLE"
+remove_path_best_effort "$UNINSTALLER_APP" "Could not remove graphical uninstaller automatically: $UNINSTALLER_APP"
+remove_path_best_effort "$DESKTOP_APP" "Desktop shortcut could not be removed automatically: $DESKTOP_APP. Please delete it manually from Desktop."
+remove_path_best_effort "$LEGACY_APP_BUNDLE" "Could not remove legacy launcher app automatically: $LEGACY_APP_BUNDLE"
+remove_path_best_effort "$LEGACY_DESKTOP_APP" "Could not remove legacy Desktop shortcut automatically: $LEGACY_DESKTOP_APP. Please delete it manually from Desktop."
 emit_progress 45 "Removing model cache"
 echo "[Step] Remove model cache"
 for d in "${MODEL_DIRS[@]}"; do
@@ -126,6 +149,12 @@ fi
 
 emit_progress 100 "Uninstall completed"
 echo "[Done] Uninstall completed."
+if [[ "${#WARNINGS[@]}" -gt 0 ]]; then
+  echo "[Note] Uninstall completed with warnings:"
+  for warning in "${WARNINGS[@]}"; do
+    echo "  - $warning"
+  done
+fi
 if [[ "$DELETE_DIR" -eq 0 ]]; then
   echo "[Hint] Add --delete-project-dir to remove the source directory too."
 fi

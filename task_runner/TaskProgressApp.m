@@ -30,6 +30,7 @@ static NSString *SanitizeOutput(NSString *value) {
 @property(nonatomic, copy) NSString *scriptRelativePath;
 @property(nonatomic, assign) BOOL confirmRequired;
 @property(nonatomic, assign) BOOL showSuccessOpenButton;
+@property(nonatomic, assign) BOOL showDesktopShortcutButton;
 @end
 
 @implementation TaskRunnerConfig
@@ -46,6 +47,7 @@ static NSString *SanitizeOutput(NSString *value) {
 @property(nonatomic, strong) NSTextView *logTextView;
 @property(nonatomic, strong) NSButton *closeButton;
 @property(nonatomic, strong) NSButton *actionButton;
+@property(nonatomic, strong) NSButton *secondaryActionButton;
 @property(nonatomic, strong) NSTask *task;
 @property(nonatomic, strong) NSPipe *pipe;
 @property(nonatomic, strong) NSMutableString *partialLine;
@@ -118,6 +120,7 @@ static NSString *SanitizeOutput(NSString *value) {
     cfg.scriptRelativePath = [raw[@"ScriptRelativePath"] isKindOfClass:[NSString class]] ? raw[@"ScriptRelativePath"] : @"run_task.sh";
     cfg.confirmRequired = [raw[@"ConfirmRequired"] respondsToSelector:@selector(boolValue)] ? [raw[@"ConfirmRequired"] boolValue] : NO;
     cfg.showSuccessOpenButton = [raw[@"ShowSuccessOpenButton"] respondsToSelector:@selector(boolValue)] ? [raw[@"ShowSuccessOpenButton"] boolValue] : NO;
+    cfg.showDesktopShortcutButton = [raw[@"ShowDesktopShortcutButton"] respondsToSelector:@selector(boolValue)] ? [raw[@"ShowDesktopShortcutButton"] boolValue] : NO;
     return cfg;
 }
 
@@ -218,6 +221,15 @@ static NSString *SanitizeOutput(NSString *value) {
     self.actionButton.target = self;
     self.actionButton.action = @selector(onPrimaryAction:);
     [content addSubview:self.actionButton];
+
+    self.secondaryActionButton = [[NSButton alloc] initWithFrame:NSMakeRect(216, 28, 176, 36)];
+    self.secondaryActionButton.bezelStyle = NSBezelStyleRounded;
+    self.secondaryActionButton.title = Localized(@"创建桌面快捷方式", @"Create Desktop Shortcut");
+    self.secondaryActionButton.hidden = YES;
+    self.secondaryActionButton.enabled = NO;
+    self.secondaryActionButton.target = self;
+    self.secondaryActionButton.action = @selector(onSecondaryAction:);
+    [content addSubview:self.secondaryActionButton];
 
     [self.window makeKeyAndOrderFront:nil];
 }
@@ -355,6 +367,10 @@ static NSString *SanitizeOutput(NSString *value) {
         self.statusLabel.stringValue = [line substringFromIndex:8];
         return;
     }
+    if ([line hasPrefix:@"[WARN] "]) {
+        self.statusLabel.stringValue = [line substringFromIndex:7];
+        return;
+    }
     if ([line hasPrefix:@"[Done]"]) {
         [self updateProgress:100 message:[self successStatus]];
     }
@@ -405,6 +421,14 @@ static NSString *SanitizeOutput(NSString *value) {
             self.actionButton.enabled = YES;
             self.closeButton.frame = NSMakeRect(552, 28, 120, 36);
         }
+        if (self.config.showDesktopShortcutButton && [self.config.mode isEqualToString:@"install"]) {
+            self.secondaryActionButton.hidden = NO;
+            self.secondaryActionButton.enabled = YES;
+            self.statusLabel.stringValue = Localized(
+                @"安装已完成。桌面快捷方式默认不创建；如需创建，可点击下方按钮。卸载时可能需要手动删除该快捷方式。",
+                @"Installation completed. Desktop shortcut creation is optional; use the button below if you want one. macOS may require manual deletion of the shortcut during uninstall."
+            );
+        }
     } else {
         if (self.progressBar.doubleValue < 100) {
             self.progressBar.doubleValue = MAX(self.progressBar.doubleValue, 1);
@@ -412,6 +436,15 @@ static NSString *SanitizeOutput(NSString *value) {
         self.statusLabel.stringValue = [self failureStatus];
         [self appendLog:[NSString stringWithFormat:@"[ERROR] %@\n", [self failureStatus]]];
     }
+}
+
+- (void)showInfoAlertWithTitle:(NSString *)title message:(NSString *)message {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.alertStyle = NSAlertStyleInformational;
+    alert.messageText = title ?: self.config.appDisplayName ?: @"FunASR Dictation";
+    alert.informativeText = message ?: @"";
+    [alert addButtonWithTitle:Localized(@"关闭", @"Close")];
+    [alert runModal];
 }
 
 - (void)showFatalAlert:(NSString *)message {
@@ -442,6 +475,58 @@ static NSString *SanitizeOutput(NSString *value) {
     } @catch (__unused NSException *exc) {
     }
     [NSApp terminate:nil];
+}
+
+- (void)onSecondaryAction:(id)sender {
+    (void)sender;
+    NSString *scriptPath = [NSString stringWithFormat:@"%@/Library/Application Support/FunASRDictation/app/create_desktop_shortcut.sh", NSHomeDirectory()];
+    if (![[NSFileManager defaultManager] isReadableFileAtPath:scriptPath]) {
+        [self showFatalAlert:Localized(@"找不到创建桌面快捷方式所需的脚本。", @"Could not find the script needed to create the Desktop shortcut.")];
+        return;
+    }
+
+    NSTask *task = [[NSTask alloc] init];
+    task.executableURL = [NSURL fileURLWithPath:@"/bin/bash"];
+    task.arguments = @[scriptPath];
+    task.environment = @{ @"HOME": NSHomeDirectory() };
+
+    NSPipe *pipe = [NSPipe pipe];
+    task.standardOutput = pipe;
+    task.standardError = pipe;
+
+    NSError *error = nil;
+    if (![task launchAndReturnError:&error]) {
+        [self showFatalAlert:error.localizedDescription ?: Localized(@"无法创建桌面快捷方式。", @"Could not create the Desktop shortcut.")];
+        return;
+    }
+    [task waitUntilExit];
+
+    NSData *outputData = [[pipe fileHandleForReading] readDataToEndOfFile];
+    NSString *output = [[NSString alloc] initWithData:outputData encoding:NSUTF8StringEncoding];
+    if (output.length == 0) {
+        output = [[NSString alloc] initWithData:outputData encoding:NSISOLatin1StringEncoding] ?: @"";
+    }
+    NSString *sanitized = SanitizeOutput(output ?: @"");
+    if (sanitized.length > 0) {
+        [self appendLog:sanitized];
+        if (![sanitized hasSuffix:@"\n"]) {
+            [self appendLog:@"\n"];
+        }
+    }
+
+    if (task.terminationStatus == 0) {
+        self.secondaryActionButton.enabled = NO;
+        self.secondaryActionButton.title = Localized(@"桌面快捷方式已创建", @"Desktop Shortcut Created");
+        self.statusLabel.stringValue = Localized(
+            @"桌面快捷方式已创建。卸载时如未自动删除，请手动从桌面移除。",
+            @"Desktop shortcut created. If uninstall cannot remove it automatically, delete it manually from Desktop."
+        );
+        [self showInfoAlertWithTitle:Localized(@"桌面快捷方式已创建", @"Desktop Shortcut Created")
+                             message:Localized(@"已在桌面创建快捷方式。注意：卸载时如果 macOS 阻止自动删除，你需要手动从桌面删除该快捷方式。", @"A Desktop shortcut was created. Note: if macOS blocks automatic removal during uninstall, you will need to delete the shortcut manually from Desktop.")];
+        return;
+    }
+
+    [self showFatalAlert:Localized(@"创建桌面快捷方式失败。你仍然可以从 Applications 中启动应用。", @"Failed to create the Desktop shortcut. You can still launch the app from Applications.")];
 }
 
 @end

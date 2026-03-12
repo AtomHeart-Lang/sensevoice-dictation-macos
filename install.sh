@@ -8,6 +8,7 @@ chmod +x \
   ./install.sh \
   ./start_app.sh \
   ./create_launcher.sh \
+  ./create_desktop_shortcut.sh \
   ./create_uninstaller.sh \
   ./launch_from_desktop.sh \
   ./remove_launcher.sh \

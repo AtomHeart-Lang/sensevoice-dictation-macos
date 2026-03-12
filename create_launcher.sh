@@ -4,7 +4,7 @@ set -euo pipefail
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="FunASR Dictation"
 LEGACY_APP_NAME="SenseVoice Dictation"
-APP_VERSION="2.1.2"
+APP_VERSION="2.1.4"
 APP_BUNDLE="$HOME/Applications/$APP_NAME.app"
 DESKTOP_APP="$HOME/Desktop/$APP_NAME.app"
 LEGACY_APP_BUNDLE="$HOME/Applications/$LEGACY_APP_NAME.app"
@@ -20,6 +20,7 @@ APP_SUPPORT_DIR="$HOME/Library/Application Support/SenseVoiceDictation"
 LAUNCHER_IDENTITY_FILE="$APP_SUPPORT_DIR/launcher_identity.sha256"
 RUNTIME_PATH_FILE="$APP_SUPPORT_DIR/runtime_app_dir.txt"
 FORCE_REBUILD=0
+CREATE_DESKTOP_SHORTCUT=0
 LAUNCHER_BIN="$APP_BUNDLE/Contents/MacOS/FunASRLauncher"
 LAUNCHER_SRC="$APP_DIR/launcher/FunASRLauncher.c"
 LAUNCHER_TEMPLATE_BIN="$APP_DIR/launcher/FunASRLauncher"
@@ -27,13 +28,21 @@ LAUNCHER_TEMPLATE_BIN="$APP_DIR/launcher/FunASRLauncher"
 for arg in "$@"; do
   case "$arg" in
     --force|--force-rebuild) FORCE_REBUILD=1 ;;
+    --with-desktop-shortcut) CREATE_DESKTOP_SHORTCUT=1 ;;
     *)
       echo "[ERROR] Unknown argument: $arg"
-      echo "Usage: ./create_launcher.sh [--force-rebuild]"
+      echo "Usage: ./create_launcher.sh [--force-rebuild] [--with-desktop-shortcut]"
       exit 1
       ;;
   esac
 done
+
+create_desktop_shortcut() {
+  mkdir -p "$HOME/Desktop"
+  rm -f "$DESKTOP_APP"
+  ln -s "$APP_BUNDLE" "$DESKTOP_APP"
+  echo "[OK] Desktop shortcut created (symlink): $DESKTOP_APP"
+}
 
 reset_tcc_for_bundle() {
   local bundle_id="$1"
@@ -77,8 +86,6 @@ mkdir -p "$HOME/Applications"
 # may invalidate previously granted TCC permissions. Rebuild only when forced.
 if [[ "$FORCE_REBUILD" -eq 0 && -d "$APP_BUNDLE" && -x "$LAUNCHER_BIN" ]]; then
   rm -rf "$LEGACY_APP_BUNDLE" "$LEGACY_DESKTOP_APP"
-  rm -f "$DESKTOP_APP"
-  ln -s "$APP_BUNDLE" "$DESKTOP_APP"
   LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
   if [[ -x "$LSREGISTER" ]]; then
     "$LSREGISTER" -f "$APP_BUNDLE" >/dev/null 2>&1 || true
@@ -96,11 +103,13 @@ if [[ "$FORCE_REBUILD" -eq 0 && -d "$APP_BUNDLE" && -x "$LAUNCHER_BIN" ]]; then
   fi
   reset_tcc_for_legacy_bundle_ids
   echo "[OK] Launcher app already exists; skipped rebuild to preserve TCC identity."
-  echo "[OK] Desktop shortcut created (symlink): $DESKTOP_APP"
+  if [[ "$CREATE_DESKTOP_SHORTCUT" -eq 1 ]]; then
+    create_desktop_shortcut
+  fi
   exit 0
 fi
 
-rm -rf "$APP_BUNDLE" "$DESKTOP_APP" "$LEGACY_APP_BUNDLE" "$LEGACY_DESKTOP_APP"
+rm -rf "$APP_BUNDLE" "$LEGACY_APP_BUNDLE" "$LEGACY_DESKTOP_APP"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 
 cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
@@ -191,7 +200,7 @@ fi
 reset_tcc_for_bundle "$APP_BUNDLE_ID"
 reset_tcc_for_legacy_bundle_ids
 
-ln -s "$APP_BUNDLE" "$DESKTOP_APP"
-
 echo "[OK] Launcher app created: $APP_BUNDLE"
-echo "[OK] Desktop shortcut created (symlink): $DESKTOP_APP"
+if [[ "$CREATE_DESKTOP_SHORTCUT" -eq 1 ]]; then
+  create_desktop_shortcut
+fi
