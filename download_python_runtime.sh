@@ -7,6 +7,9 @@ PYTHON_DIR="$RUNTIME_ROOT/python"
 PYTHON_BIN="$PYTHON_DIR/bin/python3.11"
 RELEASE_TAG="20260303"
 VERSION="3.11.15+20260303"
+PYTHON_ARCHIVE=""
+PYTHON_SHA256=""
+PYTHON_URL=""
 
 is_chinese_locale() {
   local locale="${LC_ALL:-${LC_MESSAGES:-${LANG:-${AppleLocale:-}}}}"
@@ -49,6 +52,67 @@ pick_asset() {
   esac
   PYTHON_URL="https://github.com/astral-sh/python-build-standalone/releases/download/${RELEASE_TAG}/${PYTHON_ARCHIVE//+/%%2B}"
   PYTHON_URL="${PYTHON_URL//%%2B/%2B}"
+
+  if [[ -n "${SVD_PYTHON_ARCHIVE:-}" ]]; then
+    PYTHON_ARCHIVE="$SVD_PYTHON_ARCHIVE"
+  fi
+  if [[ -n "${SVD_PYTHON_SHA256:-}" ]]; then
+    PYTHON_SHA256="$SVD_PYTHON_SHA256"
+  fi
+  if [[ -n "${SVD_PYTHON_URL:-}" ]]; then
+    PYTHON_URL="$SVD_PYTHON_URL"
+  fi
+}
+
+curl_attempt() {
+  local mode_label="$1"
+  shift
+  local extra_args=("$@")
+  local attempt exit_code
+
+  for attempt in 1 2 3; do
+    local curl_cmd=(
+      curl --fail --location --progress-bar
+      --connect-timeout 20
+      --retry 2
+      --retry-delay 1
+      --retry-all-errors
+    )
+    if [[ "${#extra_args[@]}" -gt 0 ]]; then
+      curl_cmd+=("${extra_args[@]}")
+    fi
+    curl_cmd+=("$PYTHON_URL" -o "$ARCHIVE_PATH")
+    if "${curl_cmd[@]}"; then
+      return 0
+    else
+      exit_code=$?
+    fi
+    echo "[WARN] $(localize "独立 Python 下载失败（${mode_label}，第 ${attempt} 次尝试，退出码 ${exit_code}）。" "Standalone Python download failed (${mode_label}, attempt ${attempt}, exit ${exit_code}).")" >&2
+    if [[ "$attempt" -lt 3 ]]; then
+      sleep 1
+    fi
+  done
+
+  return "$exit_code"
+}
+
+download_python_archive() {
+  local exit_code=0
+  if curl_attempt "HTTP/2"; then
+    return 0
+  else
+    exit_code=$?
+  fi
+
+  if [[ "$exit_code" -eq 16 || "$exit_code" -eq 18 || "$exit_code" -eq 28 || "$exit_code" -eq 56 || "$exit_code" -eq 92 ]]; then
+    echo "[WARN] $(localize "检测到 HTTP/2 下载不稳定，正在回退到 HTTP/1.1 重试。" "Detected unstable HTTP/2 download, falling back to HTTP/1.1.")" >&2
+    emit_progress 28 "$(localize "HTTP/2 失败，回退到 HTTP/1.1 重试" "HTTP/2 failed, retrying with HTTP/1.1")"
+    echo "[Step] $(localize "使用 HTTP/1.1 重试下载" "Retrying download with HTTP/1.1")" >&2
+    curl_attempt "HTTP/1.1" --http1.1
+    return $?
+  fi
+
+  return "$exit_code"
 }
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -83,7 +147,7 @@ mkdir -p "$INSTALL_ROOT"
 
 emit_progress 24 "$(localize "下载独立 Python 运行时" "Downloading standalone Python runtime")"
 echo "[Step] $(localize "下载独立 Python 运行时" "Downloading standalone Python runtime")" >&2
-curl --fail --location --progress-bar "$PYTHON_URL" -o "$ARCHIVE_PATH"
+download_python_archive
 
 actual_sha="$(shasum -a 256 "$ARCHIVE_PATH" | awk '{print $1}')"
 if [[ "$actual_sha" != "$PYTHON_SHA256" ]]; then
