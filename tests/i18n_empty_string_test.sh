@@ -5,7 +5,7 @@ python3 - <<'PY'
 from pathlib import Path
 import ast
 
-repo = Path("/Volumes/SATA-DATA/SynologyDrive/codex/SenseVoiceDictation/release_repo")
+repo = Path("/Volumes/SATA-DATA/SynologyDrive/codex/SenseVoiceDictation/sensevoice-dictation-macos")
 source = (repo / "menubar_dictation_app.py").read_text(encoding="utf-8")
 module = ast.parse(source)
 

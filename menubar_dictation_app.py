@@ -52,7 +52,7 @@ from AppKit import (
 from Foundation import NSBundle, NSDate, NSLocale, NSRunLoop
 from pynput import keyboard, mouse
 from hotkey_dialog_layout import build_hotkey_settings_actions, build_hotkey_settings_sections
-from model_config_layout import build_model_config_sections
+from model_config_layout import build_model_config_dialog_layout, build_model_config_sections
 
 try:
     import tomllib
@@ -1039,10 +1039,11 @@ def ui_edit_model_config(current: CoreConfig) -> Optional[CoreConfig]:
         alert.addButtonWithTitle_(tr("cancel"))
 
         sections = build_model_config_sections()
-        panel_w = 500
-        panel_h = 790
-        card_x = 18
-        card_w = panel_w - 36
+        layout = build_model_config_dialog_layout()
+        panel_w = layout.panel_w
+        panel_h = layout.panel_h
+        card_x = layout.card_x
+        card_w = layout.card_w
         section_heights = {
             "core": 284,
             "text": 214,
@@ -1124,15 +1125,16 @@ def ui_edit_model_config(current: CoreConfig) -> Optional[CoreConfig]:
 
         icon = _app_icon_image(rounded=True)
         if icon is not None:
-            icon_view = NSImageView.alloc().initWithFrame_(NSMakeRect(16, panel_h - 78, 62, 62))
+            icon_view = NSImageView.alloc().initWithFrame_(
+                NSMakeRect(layout.icon_x, layout.icon_y, layout.icon_size, layout.icon_size)
+            )
             icon_view.setImage_(icon)
             panel.addSubview_(icon_view)
 
-        header_x = 94
         title_label = make_text(
-            NSMakeRect(header_x, panel_h - 56, panel_w - header_x - 16, 28),
+            NSMakeRect(layout.title_x, layout.title_y, layout.title_w, layout.title_h),
             tr("model_config_title"),
-            NSFont.boldSystemFontOfSize_(18),
+            NSFont.boldSystemFontOfSize_(17),
         )
         panel.addSubview_(title_label)
 
@@ -1145,8 +1147,8 @@ def ui_edit_model_config(current: CoreConfig) -> Optional[CoreConfig]:
             cursor_y = section_h - 70
 
             if section.key == "core":
-                label_w = 128
-                field_x = 176
+                label_w = layout.core_label_w
+                field_x = layout.core_field_x
                 field_w = min(248, card_w - field_x - 16)
                 for item in section.items:
                     title = make_text(
@@ -1160,7 +1162,7 @@ def ui_edit_model_config(current: CoreConfig) -> Optional[CoreConfig]:
                     cursor_y -= 38
                     if item.help_key:
                         help_label = make_wrapped_text(
-                            NSMakeRect(44, cursor_y, card_w - 60, 24),
+                            NSMakeRect(layout.core_help_x, cursor_y, card_w - 60, 24),
                             tr(item.help_key),
                             NSFont.systemFontOfSize_(11),
                             color=secondary_text,
@@ -1175,7 +1177,7 @@ def ui_edit_model_config(current: CoreConfig) -> Optional[CoreConfig]:
                     cursor_y -= 30
                     if item.help_key:
                         help_label = make_wrapped_text(
-                            NSMakeRect(44, cursor_y, card_w - 60, 28),
+                            NSMakeRect(layout.toggle_help_x, cursor_y, card_w - 60, 28),
                             tr(item.help_key),
                             NSFont.systemFontOfSize_(11),
                             color=secondary_text,

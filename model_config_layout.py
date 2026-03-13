@@ -17,6 +17,25 @@ class ModelConfigSection:
     items: Tuple[ModelConfigItem, ...]
 
 
+@dataclass(frozen=True)
+class ModelConfigDialogLayout:
+    panel_w: int
+    panel_h: int
+    card_x: int
+    card_w: int
+    icon_x: int
+    icon_y: int
+    icon_size: int
+    title_x: int
+    title_y: int
+    title_w: int
+    title_h: int
+    core_label_w: int
+    core_field_x: int
+    core_help_x: int
+    toggle_help_x: int
+
+
 def build_model_config_sections() -> Tuple[ModelConfigSection, ...]:
     return (
         ModelConfigSection(
@@ -81,4 +100,43 @@ def build_model_config_sections() -> Tuple[ModelConfigSection, ...]:
                 ),
             ),
         ),
+    )
+
+
+def build_model_config_dialog_layout() -> ModelConfigDialogLayout:
+    panel_w = 500
+    panel_h = 790
+
+    # NSAlert accessory views render with a slightly wider trailing gutter than
+    # the leading side. Compensate inside the panel so the visible cards read
+    # as centered in the full dialog window, not just inside the accessory view.
+    card_left_inset = 40
+    card_right_inset = 20
+    card_w = panel_w - card_left_inset - card_right_inset
+
+    icon_size = 52
+    icon_x = 28
+    icon_y = panel_h - 76
+
+    title_h = 24
+    title_x = 100
+    title_y = icon_y + (icon_size - title_h) // 2
+    title_w = panel_w - title_x - 20
+
+    return ModelConfigDialogLayout(
+        panel_w=panel_w,
+        panel_h=panel_h,
+        card_x=card_left_inset,
+        card_w=card_w,
+        icon_x=icon_x,
+        icon_y=icon_y,
+        icon_size=icon_size,
+        title_x=title_x,
+        title_y=title_y,
+        title_w=title_w,
+        title_h=title_h,
+        core_label_w=128,
+        core_field_x=160,
+        core_help_x=44,
+        toggle_help_x=44,
     )

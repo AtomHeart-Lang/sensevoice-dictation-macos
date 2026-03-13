@@ -5,7 +5,7 @@ python3 - <<'PY'
 import sys
 from pathlib import Path
 
-repo_dir = Path("/Volumes/SATA-DATA/SynologyDrive/codex/SenseVoiceDictation/release_repo")
+repo_dir = Path("/Volumes/SATA-DATA/SynologyDrive/codex/SenseVoiceDictation/sensevoice-dictation-macos")
 sys.path.insert(0, str(repo_dir))
 
 from hotkey_dialog_layout import (
