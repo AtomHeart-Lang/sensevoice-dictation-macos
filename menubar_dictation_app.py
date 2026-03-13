@@ -642,11 +642,11 @@ def ui_hotkey_settings_action(
     sections = build_hotkey_settings_sections()
     actions = build_hotkey_settings_actions()
 
-    panel_w = 286
+    panel_w = 278
     panel_h = 172
     panel = NSView.alloc().initWithFrame_(NSMakeRect(0, 0, panel_w, panel_h))
 
-    mode_card = _make_dialog_card(panel, 12, 98, panel_w - 24, 64, tr(sections[0].title_key))
+    mode_card = _make_dialog_card(panel, 14, 98, panel_w - 28, 64, tr(sections[0].title_key))
 
     radio_keyboard = NSButton.alloc().initWithFrame_(NSMakeRect(36, 16, 78, 20))
     radio_keyboard.setButtonType_(NSRadioButton)
@@ -654,13 +654,13 @@ def ui_hotkey_settings_action(
     radio_keyboard.setState_(NSControlStateValueOn if mode_value == "keyboard" else 0)
     mode_card.addSubview_(radio_keyboard)
 
-    radio_mouse = NSButton.alloc().initWithFrame_(NSMakeRect(150, 16, 78, 20))
+    radio_mouse = NSButton.alloc().initWithFrame_(NSMakeRect(144, 16, 78, 20))
     radio_mouse.setButtonType_(NSRadioButton)
     radio_mouse.setTitle_(tr("mode_mouse"))
     radio_mouse.setState_(NSControlStateValueOn if mode_value == "mouse" else 0)
     mode_card.addSubview_(radio_mouse)
 
-    current_card = _make_dialog_card(panel, 12, 12, panel_w - 24, 70, tr(sections[1].title_key))
+    current_card = _make_dialog_card(panel, 14, 12, panel_w - 28, 70, tr(sections[1].title_key))
     keyboard_line = _make_dialog_text(
         NSMakeRect(16, 30, panel_w - 56, 16),
         "",
@@ -1019,17 +1019,16 @@ def ui_edit_model_config(current: CoreConfig) -> Optional[CoreConfig]:
         app.activateIgnoringOtherApps_(True)
 
         alert = NSAlert.alloc().init()
-        alert.setMessageText_(tr("model_config_title"))
-        alert.setInformativeText_(tr("model_config_intro"))
-        _configure_alert_icon(alert, size=50.0)
+        alert.setMessageText_("")
+        alert.setInformativeText_("")
         alert.addButtonWithTitle_(tr("save"))
         alert.addButtonWithTitle_(tr("cancel"))
 
         sections = build_model_config_sections()
-        panel_w = 430
-        panel_h = 676
-        card_x = 24
-        card_w = panel_w - 48
+        panel_w = 500
+        panel_h = 790
+        card_x = 18
+        card_w = panel_w - 36
         section_heights = {
             "core": 284,
             "text": 214,
@@ -1109,8 +1108,22 @@ def ui_edit_model_config(current: CoreConfig) -> Optional[CoreConfig]:
             card.addSubview_(scroll)
             return text_view
 
+        icon = _app_icon_image(rounded=True)
+        if icon is not None:
+            icon_view = NSImageView.alloc().initWithFrame_(NSMakeRect(16, panel_h - 78, 62, 62))
+            icon_view.setImage_(icon)
+            panel.addSubview_(icon_view)
+
+        header_x = 94
+        title_label = make_text(
+            NSMakeRect(header_x, panel_h - 56, panel_w - header_x - 16, 28),
+            tr("model_config_title"),
+            NSFont.boldSystemFontOfSize_(22),
+        )
+        panel.addSubview_(title_label)
+
         control_map = {}
-        top_y = panel_h - 12
+        top_y = panel_h - 96
         for section in sections:
             section_h = section_heights[section.key]
             top_y -= section_h
@@ -1118,9 +1131,9 @@ def ui_edit_model_config(current: CoreConfig) -> Optional[CoreConfig]:
             cursor_y = section_h - 70
 
             if section.key == "core":
-                label_w = 114
-                field_x = 144
-                field_w = min(208, card_w - field_x - 16)
+                label_w = 128
+                field_x = 176
+                field_w = min(248, card_w - field_x - 16)
                 for item in section.items:
                     title = make_text(
                         NSMakeRect(16, cursor_y + 8, label_w, 18),

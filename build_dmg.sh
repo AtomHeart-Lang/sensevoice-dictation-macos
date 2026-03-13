@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_NAME="FunASR Dictation"
-APP_VERSION="2.1.10"
+APP_VERSION="2.1.11"
 INSTALLER_APP_NAME="Install FunASR Dictation.app"
 DMG_NAME="funasr-dictation-installer-${APP_VERSION}.dmg"
 WORK_DIR="$(mktemp -d /tmp/funasr-dmg.XXXXXX)"
