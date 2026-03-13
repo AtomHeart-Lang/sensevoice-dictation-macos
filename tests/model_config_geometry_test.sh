@@ -20,7 +20,7 @@ assert layout.panel_h == 790
 left_margin = layout.card_x
 right_margin = layout.panel_w - layout.card_x - layout.card_w
 assert left_margin == 28, left_margin
-assert right_margin == 28, right_margin
+assert right_margin == 8, right_margin
 
 icon_mid_y = layout.icon_y + (layout.icon_size / 2.0)
 title_mid_y = layout.title_y + (layout.title_h / 2.0)
